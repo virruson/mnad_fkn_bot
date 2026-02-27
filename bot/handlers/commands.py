@@ -1,94 +1,74 @@
 """
 Базовые команды бота
 """
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-# Импортируем функции из других модулей
-from bot.handlers.schedule import show_schedule_callback, show_group_schedule
-from bot.handlers.notifications import manage_notifications_callback
-from bot.handlers.tasks import show_tasks_callback
-from bot.handlers.subjects import show_subjects_callback
+from bot.handlers.schedule import show_schedule_callback
+from bot.handlers.auth import auth_service, login_start
 
+logger = logging.getLogger(__name__)
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать главное меню"""
+    user_id = update.effective_user.id
+    first_name = update.effective_user.first_name
+    
+    if auth_service.is_user_verified(user_id):
+        email = auth_service.get_user_email(user_id)
+        text = f"👋 С возвращением, {first_name}!\n✅ Авторизован: {email}"
+        keyboard = [
+            [InlineKeyboardButton("📅 Расписание", callback_data="schedule")],
+            [InlineKeyboardButton("🔔 Уведомления", callback_data="notify")],
+            [InlineKeyboardButton("📚 Задания", callback_data="tasks")],
+            [InlineKeyboardButton("📖 Предметы", callback_data="subjects")]
+        ]
+    else:
+        text = (
+            f"👋 Привет, {first_name}!\n\n"
+            "Я бот расписания МНАД ФКН ВШЭ.\n"
+            "Для доступа к функциям авторизуйтесь через корпоративную почту."
+        )
+        keyboard = [[InlineKeyboardButton("🔐 Авторизоваться", callback_data="login")]]
+    
+    # Определяем, куда отправлять
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
-    user = update.effective_user
-    welcome_text = (
-        f"👋 Привет, {user.first_name}!\n\n"
-        "Я бот расписания МНАД ФКН ВШЭ. Я помогу тебе:\n"
-        "📅 Посмотреть расписание (+ссылки на Zoom)\n"
-        "🔔 Подписаться на уведомления о парах\n"
-        "📚 Узнать о ДЗ и контрольных работах\n"
-        "📖 Найти материалы по предметам\n\n"
-        "Используй /help чтобы узнать все команды"
-    )
-    
-    # Создаем клавиатуру с основными командами
-    keyboard = [
-        [
-            InlineKeyboardButton("📅 Расписание", callback_data="schedule"),
-            InlineKeyboardButton("🔔 Уведомления", callback_data="notify")
-        ],
-        [
-            InlineKeyboardButton("📚 Задания", callback_data="tasks"),
-            InlineKeyboardButton("📖 Предметы", callback_data="subjects")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    await show_main_menu(update, context)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /help"""
-    help_text = (
-        "📋 Доступные команды:\n\n"
-        "/start - Начать работу с ботом\n"
-        "/help - Показать это сообщение\n"
-        "/schedule - Показать расписание\n"
-        "/notify - Настроить уведомления\n"
-        "/tasks - Список ДЗ и КР\n"
-        "/subjects - Материалы по предметам\n"
+    """Справка"""
+    await update.message.reply_text(
+        "/start - Начать\n"
+        "/login - Авторизация\n"
+        "/logout - Выйти"
     )
-    await update.message.reply_text(help_text)
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик нажатий на inline кнопки"""
+    """Обработчик кнопок"""
     query = update.callback_query
     await query.answer()
     
-    # Перенаправляем в соответствующие обработчики
+    user_id = update.effective_user.id
+    logger.info(f"🔘 Нажата кнопка: {query.data}")
+    
+    if query.data == "login":
+        # Для кнопки логина нужно передать update с callback_query
+        await login_start(update, context)
+        return
+    
+    # Проверка авторизации для остальных кнопок
+    if not auth_service.is_user_verified(user_id):
+        await query.edit_message_text("🔐 Сначала авторизуйтесь через кнопку выше")
+        return
+    
     if query.data == "schedule":
         await show_schedule_callback(update, context)
-    elif query.data == "notify":
-        await manage_notifications_callback(update, context)
-    elif query.data == "tasks":
-        await show_tasks_callback(update, context)
-    elif query.data == "subjects":
-        await show_subjects_callback(update, context)
-    elif query.data == "back_to_menu":
-        await back_to_menu(update, context)
-    elif query.data in ["group1", "group2"]:
-        await show_group_schedule(update, context)
-
-async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Вернуться в главное меню"""
-    query = update.callback_query
-    
-    # Создаем главное меню как в /start
-    keyboard = [
-        [
-            InlineKeyboardButton("📅 Расписание", callback_data="schedule"),
-            InlineKeyboardButton("🔔 Уведомления", callback_data="notify")
-        ],
-        [
-            InlineKeyboardButton("📚 Задания", callback_data="tasks"),
-            InlineKeyboardButton("📖 Предметы", callback_data="subjects")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        "Главное меню:",
-        reply_markup=reply_markup
-    )
+    else:
+        await query.edit_message_text(f"⚙️ Функция {query.data} в разработке")

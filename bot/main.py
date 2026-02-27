@@ -1,49 +1,46 @@
 """
-Главный модуль бота расписания ФКН
+Главный модуль бота
 """
 import os
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
+env_path = Path('.env')
+if env_path.exists():
+    load_dotenv(env_path, override=True)
+    print(f"✅ Загружен .env из {env_path.absolute()}")
 
-# Импортируем обработчики
 from bot.handlers.commands import start, help_command, button_callback
-from bot.handlers.schedule import show_group_schedule
-from bot.handlers.commands import back_to_menu
+from bot.handlers import auth
+from bot.handlers.message_handler import handle_all_messages
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Загружаем переменные окружения
-load_dotenv()
-
-# Токен бота из .env файла
 TOKEN = os.getenv('BOT_TOKEN')
 if not TOKEN:
-    logger.error("BOT_TOKEN не найден в .env файле!")
-    logger.error("Создайте файл .env и добавьте строку: BOT_TOKEN=ваш_токен")
+    logger.error("BOT_TOKEN не найден!")
     exit(1)
 
 def main():
-    """Запуск бота"""
-    # Создаем приложение
     application = Application.builder().token(TOKEN).build()
-
-    # Регистрируем обработчики команд
+    
+    # 1. Команды
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("logout", auth.logout))
     
-    # Обработчик для inline кнопок
+    # 2. Кнопки
     application.add_handler(CallbackQueryHandler(button_callback))
-
-    # Запускаем бота
-    logger.info("Бот запущен... Нажмите Ctrl+C для остановки")
-    application.run_polling(allowed_updates=['message', 'callback_query'])
+    
+    # 3. ВАЖНО: глобальный обработчик сообщений ДОЛЖЕН БЫТЬ ПОСЛЕДНИМ
+    # Он будет ловить все текстовые сообщения, которые не обработали предыдущие хендлеры
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_messages))
+    
+    logger.info("🚀 Бот запущен...")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
