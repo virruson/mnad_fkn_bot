@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from bot.handlers.schedule import show_schedule_callback
-from bot.handlers.auth import auth_service, login_start
+from bot.handlers.auth import auth_service, login_start, logout as auth_logout
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,21 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if auth_service.is_user_verified(user_id):
         email = auth_service.get_user_email(user_id)
-        text = f"👋 С возвращением, {first_name}!\n✅ Авторизован: {email}"
+        text = f"👋 С возвращением, {first_name}!\n✅ Авторизован: {email}\n\nВыберите действие:"
+        
+        # Меню для авторизованных - все кнопки на одном уровне
         keyboard = [
-            [InlineKeyboardButton("📅 Расписание", callback_data="schedule")],
-            [InlineKeyboardButton("🔔 Уведомления", callback_data="notify")],
-            [InlineKeyboardButton("📚 Задания", callback_data="tasks")],
-            [InlineKeyboardButton("📖 Предметы", callback_data="subjects")]
+            [
+                InlineKeyboardButton("📅 Расписание", callback_data="schedule"),
+                InlineKeyboardButton("🔔 Уведомления", callback_data="notify")
+            ],
+            [
+                InlineKeyboardButton("📚 Задания", callback_data="tasks"),
+                InlineKeyboardButton("📖 Предметы", callback_data="subjects")
+            ],
+            [
+                InlineKeyboardButton("🚪 Выйти", callback_data="logout")  # Кнопка выхода на отдельной строке, но на том же уровне
+            ]
         ]
     else:
         text = (
@@ -32,11 +41,13 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         keyboard = [[InlineKeyboardButton("🔐 Авторизоваться", callback_data="login")]]
     
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     # Определяем, куда отправлять
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(text, reply_markup=reply_markup)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -59,8 +70,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"🔘 Нажата кнопка: {query.data}")
     
     if query.data == "login":
-        # Для кнопки логина нужно передать update с callback_query
+        # Передаем update как есть - функция login_start сама разберется
         await login_start(update, context)
+        return
+    
+    # Обработка кнопки выхода
+    if query.data == "logout":
+        await auth_logout(update, context)
+        await show_main_menu(update, context)
         return
     
     # Проверка авторизации для остальных кнопок
@@ -70,5 +87,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == "schedule":
         await show_schedule_callback(update, context)
+    elif query.data == "notify":
+        await query.edit_message_text("🔔 Функция уведомлений в разработке")
+    elif query.data == "tasks":
+        await query.edit_message_text("📚 Функция заданий в разработке")
+    elif query.data == "subjects":
+        await query.edit_message_text("📖 Функция предметов в разработке")
     else:
         await query.edit_message_text(f"⚙️ Функция {query.data} в разработке")

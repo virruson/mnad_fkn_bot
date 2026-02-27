@@ -89,54 +89,45 @@ class AuthService:
     def send_verification_email(self, recipient: str, code: str) -> bool:
         """Отправляет код подтверждения на email"""
         try:
-            logger.info(f"📧 Попытка отправки кода {code} на {recipient}")
-            
-            # ВСЕГДА выводим код в консоль для отладки
-            print("\n" + "="*60)
-            print("🔐 КОД ПОДТВЕРЖДЕНИЯ ДЛЯ ТЕСТИРОВАНИЯ")
-            print("="*60)
-            print(f"📧 Email: {recipient}")
-            print(f"🔑 Код: {code}")
-            print("="*60 + "\n")
-            
-            # Проверяем настройки
-            if not self.sender_email or not self.sender_password:
-                logger.error("❌ EMAIL или PASSWORD не настроены")
-                logger.info("✅ Но код выведен в консоль для тестирования")
-                return True  # Возвращаем true для тестирования
-            
             # Создаём сообщение
             msg = MIMEMultipart()
             msg['From'] = self.sender_email
             msg['To'] = recipient
             msg['Subject'] = 'Код подтверждения для бота ФКН'
             
-            body = f"""
+            # HTML версия письма
+            html = f"""
             <html>
-            <body>
-                <h2>Код подтверждения</h2>
-                <p>Ваш код: <b>{code}</b></p>
-                <p>Действителен 10 минут.</p>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #333;">Подтверждение email для бота ФКН</h2>
+                <p>Ваш код подтверждения:</p>
+                <div style="background-color: #f0f0f0; padding: 15px; font-size: 24px; 
+                          font-weight: bold; text-align: center; letter-spacing: 5px;
+                          border-radius: 5px;">
+                    {code}
+                </div>
+                <p>Код действителен в течение 10 минут.</p>
+                <p>Если вы не запрашивали этот код, просто проигнорируйте это письмо.</p>
+                <hr>
+                <p style="color: #666; font-size: 12px;">Бот расписания ФКН</p>
             </body>
             </html>
             """
             
-            msg.attach(MIMEText(body, 'html'))
+            msg.attach(MIMEText(html, 'html'))
             
             # Отправляем
-            server = smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=10)
-            server.starttls()
-            server.login(self.sender_email, self.sender_password)
-            server.send_message(msg)
-            server.quit()
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.sender_email, self.sender_password)
+                server.send_message(msg)
             
-            logger.info(f"✅ Письмо отправлено на {recipient}")
+            logger.info(f"Verification code sent to {recipient}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки: {e}")
-            logger.info("✅ Но код выведен в консоль для тестирования")
-            return True  # Для тестирования возвращаем true
+            logger.error(f"Failed to send email to {recipient}: {e}")
+            return False
     
     def start_verification(self, user_id: int, email: str) -> tuple:
         """Начинает процесс верификации"""
