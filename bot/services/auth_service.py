@@ -22,7 +22,9 @@ class AuthService:
     """Сервис для авторизации пользователей по email"""
     
     def __init__(self):
-        self.allowed_domains = ['edu.hse.ru', 'hse.ru']
+        #self.allowed_domains = ['edu.hse.ru', 'hse.ru']
+        domains_str = os.getenv('ALLOWED_DOMAINS', '')
+        self.allowed_domains = domains_str.split(',')
         self.whitelist = self._load_whitelist()
         self.verification_codes = {}
         self.verified_users = self._load_verified_users()
