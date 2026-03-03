@@ -30,8 +30,8 @@ async def show_schedule_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     keyboard = [
         [
-            InlineKeyboardButton("Group 1", callback_data="group1"),
-            InlineKeyboardButton("Group 2", callback_data="group2")
+            InlineKeyboardButton("Группа 1", callback_data="Группа 1"),
+            InlineKeyboardButton("Группа 2", callback_data="Группа 2")
         ],
         [InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")]
     ]

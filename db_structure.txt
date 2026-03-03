@@ -1,0 +1,61 @@
+-- Справочник потоков
+CREATE TABLE streams (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL -- Например, "Поток 2023-1" или "9-В класс"
+);
+
+-- Справочник предметов
+CREATE TABLE subjects (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL -- Например, "Математика"
+);
+
+-- Справочник преподавателей
+CREATE TABLE teachers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100) NOT NULL
+    -- можно добавить отчество, кафедру и т.д.
+);
+
+-- Справочник типов занятий
+CREATE TABLE lesson_types (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL -- Лекция, Семинар, Лаба
+);
+
+-- Основная таблица расписания
+CREATE TABLE schedule (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    stream_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    teacher_id INT NOT NULL,
+    lesson_type_id INT NOT NULL, -- ссылка на типы занятий
+    lesson_date DATE NOT NULL,    -- дата
+    lesson_time TIME NOT NULL,    -- время
+    zoom_link TEXT,               -- ссылка (может быть NULL, если занятия очные)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Связи с другими таблицами (внешние ключи)
+    FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE RESTRICT,
+    FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE RESTRICT,
+    FOREIGN KEY (lesson_type_id) REFERENCES lesson_types(id)
+);
+
+
+# sql запрос
+SELECT
+    s.lesson_date,
+    s.lesson_time,
+    st.name AS stream_name,
+    sub.name AS subject_name,
+    t.last_name AS teacher_last_name,
+    lt.name AS lesson_type,
+    s.zoom_link
+FROM schedule s
+JOIN streams st ON s.stream_id = st.id
+JOIN subjects sub ON s.subject_id = sub.id
+JOIN teachers t ON s.teacher_id = t.id
+JOIN lesson_types lt ON s.lesson_type_id = lt.id
+WHERE s.lesson_date = '2023-10-15';

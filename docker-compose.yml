@@ -1,0 +1,18 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: mnad_fkn_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Для разработки: монтируем код, чтобы не поресобирать образ каждый раз
+      - ./bot:/app/bot
+      # Для продакшена надо закомментировать строку выше и раскомментировать ниже
+      # - ./data:/app/data  # Для хранения данных
+      - ./logs:/app/logs
+    environment:
+      - TZ=Europe/Moscow
