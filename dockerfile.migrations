@@ -1,0 +1,21 @@
+# dockerfile.migrations
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Копируем зависимости
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем alembic.ini из utils
+COPY bot/utils/alembic.ini ./alembic.ini
+
+# Копируем папку с миграциями из bot/migrations
+COPY bot/migrations ./migrations
+
+# Копируем модели (нужны для autogenerate)
+COPY bot/models ./models
+COPY bot/utils/database.py ./utils/database.py
+
+# Ждем БД и применяем миграции
+CMD ["sh", "-c", "sleep 5 && alembic upgrade head"]

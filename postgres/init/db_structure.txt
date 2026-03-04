@@ -1,0 +1,195 @@
+-- Справочник потоков
+CREATE TABLE streams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL 
+);
+
+-- Справочник предметов
+CREATE TABLE subjects (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL 
+);
+
+-- Справочник преподавателей
+CREATE TABLE teachers (
+    id SERIAL PRIMARY KEY,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100) NOT NULL,
+    middle_name VARCHAR(100), -- отчество
+    department VARCHAR(255) -- кафедра
+);
+
+-- Справочник типов занятий
+CREATE TABLE lesson_types (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE -- Лекция, Семинар, КР
+);
+
+INSERT INTO lesson_types (name) VALUES 
+    ('Лекция'),
+    ('Семинар'),
+    ('Контрольная работа')
+ON CONFLICT (name) DO NOTHING;
+
+-- 2. Заполнение предметов
+INSERT INTO subjects (name) VALUES 
+    ('Теория вероятностей'),
+    ('Машинное обучение'),
+    ('НИС "Продуктовый подход в аналитике данных"'),
+    ('Базы и хранилища данных'),
+    ('Семинар наставника')
+ON CONFLICT DO NOTHING;
+
+-- 3. Заполнение преподавателей
+INSERT INTO teachers (first_name, last_name) VALUES 
+    ('Глеб', 'Карпов'),
+    ('Юрий', 'Саночкин'),
+    ('Данила', 'Яценко'),
+    ('Леонид', 'Смелов'),
+    ('Кирилл', 'Гоменюк'),
+    ('Руслан', 'Каюмов')
+ON CONFLICT DO NOTHING;
+
+-- 4. Заполнение потоков (примеры)
+INSERT INTO streams (name) VALUES 
+    --('1 поток'),
+    --('2 поток'),
+	('все потоки')
+ON CONFLICT DO NOTHING;
+
+-- Очистка таблиц (если нужно перезаполнить)
+TRUNCATE TABLE lesson_types RESTART IDENTITY CASCADE;
+TRUNCATE TABLE subjects RESTART IDENTITY CASCADE;
+TRUNCATE TABLE teachers RESTART IDENTITY CASCADE;
+TRUNCATE TABLE streams RESTART IDENTITY CASCADE;
+
+
+-- Основная таблица расписания
+CREATE TABLE schedule (
+    id SERIAL PRIMARY KEY,
+    stream_id INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    teacher_id INTEGER NOT NULL,
+    lesson_type_id INTEGER NOT NULL,
+    lesson_date DATE NOT NULL,
+    lesson_time TIME NOT NULL,
+    zoom_link TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Внешние ключи
+    CONSTRAINT fk_schedule_stream 
+        FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE,
+    CONSTRAINT fk_schedule_subject 
+        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_schedule_teacher 
+        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_schedule_lesson_type 
+        FOREIGN KEY (lesson_type_id) REFERENCES lesson_types(id) ON DELETE RESTRICT
+);
+
+-- Индексы для оптимизации запросов
+CREATE INDEX idx_schedule_date ON schedule(lesson_date);
+CREATE INDEX idx_schedule_stream_date ON schedule(stream_id, lesson_date);
+CREATE INDEX idx_schedule_teacher_date ON schedule(teacher_id, lesson_date);
+CREATE INDEX idx_teachers_last_name ON teachers(last_name);
+CREATE INDEX idx_subjects_name ON subjects(name);
+CREATE INDEX idx_streams_name ON streams(name);
+
+
+SELECT id, name FROM streams WHERE name LIKE '%оток%';
+SELECT id, first_name, last_name FROM teachers;
+SELECT id, name FROM subjects;
+SELECT id, name FROM lesson_types;
+
+INSERT INTO schedule (
+    stream_id, subject_id, teacher_id, lesson_type_id, lesson_date, lesson_time, zoom_link
+) VALUES 
+-- 5 марта, 2 поток, 18:10
+(
+    (SELECT id FROM streams WHERE name = '2 поток'),  -- или 'Поток 2'
+    (SELECT id FROM subjects WHERE name = 'Теория вероятностей'),
+    (SELECT id FROM teachers WHERE first_name = 'Глеб' AND last_name = 'Карпов'),
+    (SELECT id FROM lesson_types WHERE name = 'Семинар'),
+    '2026-03-05',
+    '18:10:00',
+    'https://zoom.us/j/98343787690?pwd=eWbXN5P8YvZrsifZn8EAh4ZMQys79N.1'
+),
+-- 5 марта, 1 поток, 19:40
+(
+    (SELECT id FROM streams WHERE name = '1 поток'),  -- или 'Поток 1'
+    (SELECT id FROM subjects WHERE name = 'Теория вероятностей'),
+    (SELECT id FROM teachers WHERE first_name = 'Глеб' AND last_name = 'Карпов'),
+    (SELECT id FROM lesson_types WHERE name = 'Семинар'),
+    '2026-03-05',
+    '19:40:00',
+    'https://zoom.us/j/97679435330?pwd=iCFYFaPdNSwkEI4o2cs6igpabNPRmK.1'
+);
+
+-- Вставка занятия на 6, 13 марта
+INSERT INTO schedule (stream_id, subject_id, teacher_id, lesson_type_id, lesson_date, lesson_time, zoom_link)
+VALUES 
+(
+    (SELECT id FROM streams WHERE name = 'все потоки'),
+    (SELECT id FROM subjects WHERE name = 'Семинар наставника'),
+    (SELECT id FROM teachers WHERE first_name = 'Руслан' AND last_name = 'Каюмов'),
+    (SELECT id FROM lesson_types WHERE name = 'Семинар'),
+    '2026-03-13',
+    '18:10:00',
+    'https://zoom.us/j/94934247502?pwd=RSdWyaZLPKmZinqg6McGD2dU0efqkp.1'
+);
+
+INSERT INTO schedule (stream_id, subject_id, teacher_id, lesson_type_id, lesson_date, lesson_time, zoom_link)
+VALUES 
+(
+    (SELECT id FROM streams WHERE name = 'все потоки'),
+    (SELECT id FROM subjects WHERE name = 'Машинное обучение'),
+    (SELECT id FROM teachers WHERE first_name = 'Юрий' AND last_name = 'Саночкин'),
+    (SELECT id FROM lesson_types WHERE name = 'Лекция'),
+    '2026-03-18',
+    '18:10:00',
+    'https://zoom.us/j/96109585886?pwd=wMroJRQe1JZuXlErLGxqHaE2dQHAIX.1'
+),
+(
+    (SELECT id FROM streams WHERE name = '1 поток'),
+    (SELECT id FROM subjects WHERE name = 'Машинное обучение'),
+    (SELECT id FROM teachers WHERE first_name = 'Юрий' AND last_name = 'Саночкин'),
+    (SELECT id FROM lesson_types WHERE name = 'Семинар'),
+    '2026-03-19',
+    '18:10:00',
+    'https://zoom.us/j/91983465093?pwd=U4MLRgE2ggl730prJUY9Imwke8vwlR.1'
+),
+(
+    (SELECT id FROM streams WHERE name = '2 поток'),
+    (SELECT id FROM subjects WHERE name = 'Машинное обучение'),
+    (SELECT id FROM teachers WHERE first_name = 'Юрий' AND last_name = 'Саночкин'),
+    (SELECT id FROM lesson_types WHERE name = 'Семинар'),
+    '2026-03-19',
+    '19:40:00',
+    'https://zoom.us/j/94798602540?pwd=bUmSKgJUaNZj8iWUFzbdZBaiZj2TF1.1'
+),
+(
+    (SELECT id FROM streams WHERE name = 'все потоки'),
+    (SELECT id FROM subjects WHERE name = 'Семинар наставника'),
+    (SELECT id FROM teachers WHERE first_name = 'Руслан' AND last_name = 'Каюмов'),
+    (SELECT id FROM lesson_types WHERE name = 'Семинар'),
+    '2026-03-20',
+    '18:10:00',
+    'https://zoom.us/j/94934247502?pwd=RSdWyaZLPKmZinqg6McGD2dU0efqkp.1'
+);
+
+SELECT 
+    to_char(s.lesson_date, 'DD.MM.YYYY') as date,
+    to_char(s.lesson_time, 'HH24:MI') as time,
+    sub.name as subject,
+    t.last_name || ' ' || t.first_name as teacher,
+    lt.name as lesson_type,
+    st.name as stream,
+    s.zoom_link
+FROM schedule s
+JOIN subjects sub ON s.subject_id = sub.id
+JOIN teachers t ON s.teacher_id = t.id
+JOIN lesson_types lt ON s.lesson_type_id = lt.id
+JOIN streams st ON s.stream_id = st.id
+WHERE s.lesson_date >= CURRENT_DATE
+ORDER BY s.lesson_date, s.lesson_time;

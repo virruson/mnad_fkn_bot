@@ -25,3 +25,25 @@
 │  ├── ./logs             ← логи бота                         │
 │  └── .env               ← секреты (не в образе!)            │
 └─────────────────────────────────────────────────────────────┘
+
+project/
+├── bot/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── database.py
+│   ├── models.py  # SQLAlchemy модели
+│   └── handlers/
+├── migrations/
+│   ├── versions/
+│   └── env.py
+├── logs/
+├── postgres/
+│   └── init/
+│       └── 01-init.sql  # Начальные данные (если нужны)
+├── docker-compose.yml
+├── Dockerfile
+├── Dockerfile.migrations
+├── .env
+├── alembic.ini
+├── requirements.txt
+└── README.md

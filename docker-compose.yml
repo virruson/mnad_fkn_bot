@@ -1,18 +1,100 @@
-# docker-compose.yml
 version: '3.8'
 
 services:
+  # База данных PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: mnad_fkn_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-mnad_bot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mnad_password}
+      - POSTGRES_DB=${POSTGRES_DB:-mnad_schedule}
+      - TZ=Europe/Moscow
+      - PGTZ=Europe/Moscow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mnad_bot} -d ${POSTGRES_DB:-mnad_schedule}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mnad_network
+
+  # Бот (основной контейнер)
   bot:
     build: .
     container_name: mnad_fkn_bot
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     volumes:
-      # Для разработки: монтируем код, чтобы не поресобирать образ каждый раз
+      # Для разработки: монтируем код
       - ./bot:/app/bot
-      # Для продакшена надо закомментировать строку выше и раскомментировать ниже
-      # - ./data:/app/data  # Для хранения данных
+      # Логи
       - ./logs:/app/logs
     environment:
       - TZ=Europe/Moscow
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    networks:
+      - mnad_network
+
+  # Миграции базы данных (отдельный контейнер для инициализации схемы)
+  postgres-migrate:
+    build:
+      context: .
+      dockerfile: dockerfile.migrations
+    container_name: mnad_fkn_migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./migrations:/migrations
+    networks:
+      - mnad_network
+    # Запускаем миграции и завершаем контейнер
+    command: >
+      sh -c "echo 'Running migrations...' &&
+             python -m alembic upgrade head &&
+             echo 'Migrations completed'"
+
+  # pgAdmin для администрирования БД (для разработки, потом можно отключить)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: mnad_fkn_pgadmin
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@mnad.ru}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - mnad_network
+    profiles:
+      - dev
+      - tools
+
+volumes:
+  postgres_data:
+    name: mnad_postgres_data
+  pgadmin_data:
+    name: mnad_pgadmin_data
+
+networks:
+  mnad_network:
+    name: mnad_network
+    driver: bridge

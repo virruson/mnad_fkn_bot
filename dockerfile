@@ -1,19 +1,20 @@
 # Dockerfile
-FROM python:3.9-slim
+FROM python:3.11-slim-bookworm
 
-# Установка рабочей директории
 WORKDIR /app
 
-# Установка зависимостей
+# Установка системных зависимостей 
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование кода бота
 COPY bot/ ./bot/
 COPY .env .
 
-# Создание директории для данных
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/logs
 
-# Запуск бота
 CMD ["python", "-m", "bot.main"]

@@ -5,7 +5,15 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from bot.handlers.schedule import show_schedule_callback
+from bot.handlers.schedule import (
+    show_schedule_callback,
+    schedule_today_callback,
+    schedule_tomorrow_callback,
+    schedule_week_callback,
+    schedule_next_week_callback,
+    schedule_month_callback,
+    show_today_schedule
+)
 from bot.handlers.auth import auth_service, login_start, logout as auth_logout
 
 logger = logging.getLogger(__name__)
@@ -30,7 +38,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("📖 Предметы", callback_data="subjects")
             ],
             [
-                InlineKeyboardButton("🚪 Выйти", callback_data="logout")  # Кнопка выхода на отдельной строке, но на том же уровне
+                InlineKeyboardButton("🚪 Выйти", callback_data="logout")
             ]
         ]
     else:
@@ -45,7 +53,15 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Определяем, куда отправлять
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
+        # Просто отвечаем на callback, чтобы убрать "часики"
+        await update.callback_query.answer()
+        
+        # Всегда отправляем новое сообщение вместо редактирования
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=reply_markup
+        )
     else:
         await update.message.reply_text(text, reply_markup=reply_markup)
 
@@ -55,11 +71,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Справка"""
-    await update.message.reply_text(
+    help_text = (
         "/start - Начать\n"
+        "/schedule - Расписание\n"
+        "/today - Расписание на сегодня\n"
         "/login - Авторизация\n"
-        "/logout - Выйти"
+        "/logout - Выйти\n\n"
+        "📅 **Доступные периоды расписания:**\n"
+        "• Сегодня\n"
+        "• Завтра\n"
+        "• Текущая неделя\n"
+        "• Следующая неделя\n"
+        "• Месяц"
     )
+    await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик кнопок"""
@@ -69,29 +94,83 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.info(f"🔘 Нажата кнопка: {query.data}")
     
+    # Кнопки, не требующие авторизации
     if query.data == "login":
-        # Передаем update как есть - функция login_start сама разберется
         await login_start(update, context)
         return
     
-    # Обработка кнопки выхода
     if query.data == "logout":
         await auth_logout(update, context)
         await show_main_menu(update, context)
         return
     
-    # Проверка авторизации для остальных кнопок
-    if not auth_service.is_user_verified(user_id):
-        await query.edit_message_text("🔐 Сначала авторизуйтесь через кнопку выше")
+    # Кнопка возврата в главное меню
+    if query.data == "back_to_menu":
+        await show_main_menu(update, context)
         return
     
+    # Проверка авторизации для остальных кнопок
+    if not auth_service.is_user_verified(user_id):
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="🔐 Сначала авторизуйтесь через кнопку выше"
+        )
+        return
+    
+    # Обработка кнопок расписания
     if query.data == "schedule":
         await show_schedule_callback(update, context)
+    elif query.data == "schedule_today":
+        await schedule_today_callback(update, context)
+    elif query.data == "schedule_tomorrow":
+        await schedule_tomorrow_callback(update, context)
+    elif query.data == "schedule_week":
+        await schedule_week_callback(update, context)
+    elif query.data == "schedule_next_week":
+        await schedule_next_week_callback(update, context)
+    elif query.data == "schedule_month":
+        await schedule_month_callback(update, context)
+    elif query.data == "schedule_choose_stream":
+        await show_schedule_callback(update, context)
+    elif query.data.startswith("stream_"):
+        await show_today_schedule(update, context)
+    
+    # Другие функции с кнопкой "Главное меню"
     elif query.data == "notify":
-        await query.edit_message_text("🔔 Функция уведомлений в разработке")
+        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="🔔 **Уведомления**\n\n"
+                 "Здесь вы сможете настроить уведомления о занятиях.\n"
+                 "Функция в разработке.",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
     elif query.data == "tasks":
-        await query.edit_message_text("📚 Функция заданий в разработке")
+        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="📚 **Задания**\n\n"
+                 "Здесь будут отображаться домашние задания.\n"
+                 "Функция в разработке.",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
     elif query.data == "subjects":
-        await query.edit_message_text("📖 Функция предметов в разработке")
+        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="📖 **Предметы**\n\n"
+                 "Список предметов и преподавателей.\n"
+                 "Функция в разработке.",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
     else:
-        await query.edit_message_text(f"⚙️ Функция {query.data} в разработке")
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"⚙️ Функция {query.data} в разработке"
+        )
