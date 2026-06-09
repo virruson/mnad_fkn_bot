@@ -41,7 +41,7 @@ if [ "$LOCAL" = "$REMOTE" ]; then
 fi
 
 echo "🔄 Найдены обновления:"
-git log --oneline HEAD..REMOTE
+git log --oneline "$LOCAL..$REMOTE"
 git pull --ff-only
 
 echo ""
