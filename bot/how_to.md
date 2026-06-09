@@ -44,7 +44,7 @@ git clone https://github.com/virruson/mnad_fkn_bot.git #надо права на
 chmod +x dockerfile dockerfile.migrations
 chmod 600 .env
 
-**я тут**
+
 # Запусти в фоновом режиме
 docker-compose up -d
 

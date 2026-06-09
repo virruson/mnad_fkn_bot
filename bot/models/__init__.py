@@ -122,7 +122,7 @@ class Schedule(Base):
     
     def __repr__(self):
         return f"<Schedule {self.subject.name} {self.lesson_date}>"
-# bot/models/__init__.py (добавить в конец, перед __all__)
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -137,9 +137,13 @@ class User(Base):
     is_verified = Column(Boolean, default=True, comment='Верифицирован ли пользователь')
     verified_at = Column(DateTime, comment='Дата верификации')
     last_login = Column(DateTime, comment='Последний вход')
+    stream_id = Column(Integer, ForeignKey('streams.id', ondelete='SET NULL'), nullable=True)
+    notifications_enabled = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    
+
+    stream = relationship("Stream", foreign_keys=[stream_id])
+
     def __repr__(self):
         return f"<User {self.telegram_id}: {self.email}>"
 

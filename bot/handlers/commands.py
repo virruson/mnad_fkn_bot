@@ -140,16 +140,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("stream_"):
         await show_today_schedule(update, context)
     
-    # Другие функции с кнопкой "Главное меню"
+    # Уведомления — делегируем в notifications.py
     elif query.data == "notify":
-        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            text="🔔 Уведомления\n\n"
-                 "Здесь вы сможете настроить уведомления о занятиях.\n"
-                 "Функция в разработке.",
-            reply_markup=reply_markup,
-        )
+        from bot.handlers.notifications import notify_menu
+        await notify_menu(update, context)
     elif query.data == "tasks":
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)

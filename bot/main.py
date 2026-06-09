@@ -10,6 +10,8 @@ from telegram.error import BadRequest  # Добавляем импорт для 
 from bot.handlers.commands import start, help_command, button_callback
 from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages
+from bot.handlers.notifications import notify_menu, notify_setup, notify_subscribe, notify_disable
+from bot.services.scheduler import setup_scheduler
 
 # Импортируем обработчики расписания
 from bot.handlers.schedule import (
@@ -86,7 +88,7 @@ def main():
     application.add_handler(CommandHandler("schedule", show_schedule))
     application.add_handler(CommandHandler("today", schedule_today_callback))
 
-    # 4. Callback-кнопки (порядок важен: специфичные раньше универсального)
+    # 4. Callback-кнопки (порядок важен)
     application.add_handler(CallbackQueryHandler(auth.login_start, pattern="^login$"))
     application.add_handler(CallbackQueryHandler(show_schedule_callback, pattern="^schedule$"))
     application.add_handler(CallbackQueryHandler(schedule_today_callback, pattern="^schedule_today$"))
@@ -96,14 +98,22 @@ def main():
     application.add_handler(CallbackQueryHandler(schedule_month_callback, pattern="^schedule_month$"))
     application.add_handler(CallbackQueryHandler(show_schedule_callback, pattern="^schedule_choose_stream$"))
     application.add_handler(CallbackQueryHandler(show_today_schedule, pattern="^stream_\\d+$"))
+    # Уведомления
+    application.add_handler(CallbackQueryHandler(notify_menu,      pattern="^notify_menu$"))
+    application.add_handler(CallbackQueryHandler(notify_setup,     pattern="^notify_setup$"))
+    application.add_handler(CallbackQueryHandler(notify_subscribe, pattern="^notify_stream_\\d+$"))
+    application.add_handler(CallbackQueryHandler(notify_disable,   pattern="^notify_disable$"))
     # универсальный — последним
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    # 5. Глобальный обработчик текстовых сообщений (последним)
+    # 5. Глобальный обработчик текстовых сообщений
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_messages)
     )
     
+    # Планировщик уведомлений
+    setup_scheduler(application)
+
     logger.info("🚀 Бот запущен...")
     application.run_polling(allowed_updates=['message', 'callback_query'])
 
