@@ -32,8 +32,8 @@ echo "=== [2/4] Обновление кода (git pull) ==="
 git pull --ff-only
 
 echo ""
-echo "=== [3/4] Пересборка и запуск контейнеров ==="
-docker-compose build bot
+echo "=== [3/4] Пересборка образов ==="
+docker-compose build bot postgres-migrate
 docker-compose up -d --remove-orphans postgres bot
 
 echo ""

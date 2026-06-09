@@ -1,5 +1,5 @@
 # bot/models/__init__.py
-from sqlalchemy import Column, Integer, String, Date, Time, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Date, Time, Text, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
