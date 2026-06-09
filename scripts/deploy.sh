@@ -28,7 +28,20 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 echo ""
-echo "=== [2/4] Обновление кода (git pull) ==="
+echo "=== [2/4] Проверка обновлений в git ==="
+git fetch origin
+
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse "@{u}")
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+    echo "✅ Код актуален, обновлений нет. Деплой не нужен."
+    docker-compose ps
+    exit 0
+fi
+
+echo "🔄 Найдены обновления:"
+git log --oneline HEAD..REMOTE
 git pull --ff-only
 
 echo ""

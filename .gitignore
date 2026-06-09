@@ -4,6 +4,7 @@ _remove/
 *.json
 credentials.json
 *.xlsx
+volume_backup.tar.gz
 
 # Python
 __pycache__/

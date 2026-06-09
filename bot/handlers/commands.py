@@ -4,6 +4,7 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
 from bot.handlers.schedule import (
     show_schedule_callback,
@@ -53,15 +54,19 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Определяем, куда отправлять
     if update.callback_query:
-        # Просто отвечаем на callback, чтобы убрать "часики"
         await update.callback_query.answer()
-        
-        # Всегда отправляем новое сообщение вместо редактирования
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            reply_markup=reply_markup
-        )
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=reply_markup
+            )
+        except BadRequest:
+            # Сообщение нельзя отредактировать (слишком старое или медиа) — шлём новое
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text,
+                reply_markup=reply_markup
+            )
     else:
         await update.message.reply_text(text, reply_markup=reply_markup)
 
@@ -139,38 +144,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "notify":
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="🔔 **Уведомления**\n\n"
+        await query.edit_message_text(
+            text="🔔 Уведомления\n\n"
                  "Здесь вы сможете настроить уведомления о занятиях.\n"
                  "Функция в разработке.",
             reply_markup=reply_markup,
-            parse_mode='Markdown'
         )
     elif query.data == "tasks":
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="📚 **Задания**\n\n"
+        await query.edit_message_text(
+            text="📚 Задания\n\n"
                  "Здесь будут отображаться домашние задания.\n"
                  "Функция в разработке.",
             reply_markup=reply_markup,
-            parse_mode='Markdown'
         )
     elif query.data == "subjects":
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="📖 **Предметы**\n\n"
+        await query.edit_message_text(
+            text="📖 Предметы\n\n"
                  "Список предметов и преподавателей.\n"
                  "Функция в разработке.",
             reply_markup=reply_markup,
-            parse_mode='Markdown'
         )
     else:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"⚙️ Функция {query.data} в разработке"
-        )
+        await query.edit_message_text(text=f"⚙️ Функция {query.data} в разработке")
