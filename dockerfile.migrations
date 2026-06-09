@@ -7,15 +7,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем alembic.ini из utils
+# Копируем весь пакет bot/ — env.py импортирует из bot.utils.database и bot.models
+COPY bot/ ./bot/
+
+# alembic.ini — в корень /app (alembic ищет его здесь при запуске)
 COPY bot/utils/alembic.ini ./alembic.ini
 
-# Копируем папку с миграциями из bot/migrations
+# Папка migrations в корне /app — именно там alembic ищет env.py и versions/
+# (script_location = migrations в alembic.ini)
 COPY bot/migrations ./migrations
 
-# Копируем модели (нужны для autogenerate)
-COPY bot/models ./models
-COPY bot/utils/database.py ./utils/database.py
-
-# Ждем БД и применяем миграции
+# Ждём БД и применяем миграции
 CMD ["sh", "-c", "sleep 5 && alembic upgrade head"]
