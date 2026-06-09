@@ -175,9 +175,7 @@ async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if auth_service.is_user_verified(user_id):
-        # Удаляем пользователя из верифицированных
-        del auth_service.verified_users[str(user_id)]
-        auth_service._save_verified_users()
+        auth_service.delete_user(user_id)
         logger.info(f"👋 Пользователь {user_id} вышел из аккаунта")
         
         # Определяем, откуда пришел вызов
