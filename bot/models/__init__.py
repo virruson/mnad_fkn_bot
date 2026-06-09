@@ -122,6 +122,26 @@ class Schedule(Base):
     
     def __repr__(self):
         return f"<Schedule {self.subject.name} {self.lesson_date}>"
+# bot/models/__init__.py (добавить в конец, перед __all__)
+
+class User(Base):
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True)
+    telegram_id = Column(String(50), unique=True, nullable=False, comment='ID пользователя в Telegram')
+    email = Column(String(255), nullable=False, comment='Email пользователя')
+    full_name = Column(String(255), comment='Полное имя из Telegram')
+    first_name = Column(String(100), comment='Имя')
+    last_name = Column(String(100), comment='Фамилия')
+    username = Column(String(100), comment='Username в Telegram')
+    is_verified = Column(Boolean, default=True, comment='Верифицирован ли пользователь')
+    verified_at = Column(DateTime, comment='Дата верификации')
+    last_login = Column(DateTime, comment='Последний вход')
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    def __repr__(self):
+        return f"<User {self.telegram_id}: {self.email}>"
 
 # Экспортируем все модели
-__all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule']
+__all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule', 'User']

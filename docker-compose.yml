@@ -38,6 +38,7 @@ services:
     volumes:
       # Для разработки: монтируем код
       - ./bot:/app/bot
+      - ./scripts:/app/scripts
       # Логи
       - ./logs:/app/logs
     environment:
@@ -67,7 +68,7 @@ services:
              python -m alembic upgrade head &&
              echo 'Migrations completed'"
 
-  # pgAdmin для администрирования БД (для разработки, потом можно отключить)
+  # pgAdmin для администрирования БД (для разработки, потом надо не забыть отключить)
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: mnad_fkn_pgadmin

@@ -1,7 +1,9 @@
-# Secrets
+# Secrets & other
+_remove/
 .env
 *.json
 credentials.json
+*.xlsx
 
 # Python
 __pycache__/

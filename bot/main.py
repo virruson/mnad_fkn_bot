@@ -7,8 +7,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 from telegram.error import BadRequest  # Добавляем импорт для обработки ошибок
-
-# Убираем back_to_menu из импорта
 from bot.handlers.commands import start, help_command, button_callback
 from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages

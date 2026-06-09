@@ -178,6 +178,7 @@ VALUES
     'https://zoom.us/j/94934247502?pwd=RSdWyaZLPKmZinqg6McGD2dU0efqkp.1'
 );
 
+#запрос расписания
 SELECT 
     to_char(s.lesson_date, 'DD.MM.YYYY') as date,
     to_char(s.lesson_time, 'HH24:MI') as time,
