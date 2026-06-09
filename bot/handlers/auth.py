@@ -17,16 +17,17 @@ def auth_required(func):
     """Декоратор для команд, требующих авторизации"""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
-        
+
         if auth_service.is_user_verified(user_id):
             return await func(update, context)
+
+        text = "🔐 Для доступа к боту необходимо подтвердить email.\nИспользуйте /login для входа."
+        if update.callback_query:
+            await update.callback_query.answer()
+            await update.callback_query.edit_message_text(text)
         else:
-            # Если не авторизован, запускаем процесс авторизации
-            await update.message.reply_text(
-                "🔐 Для доступа к боту необходимо подтвердить email.\n"
-                "Используйте /login для входа."
-            )
-            return ConversationHandler.END
+            await update.message.reply_text(text)
+        return ConversationHandler.END
     return wrapper
 
 async def login_start(update: Update, context: ContextTypes.DEFAULT_TYPE):

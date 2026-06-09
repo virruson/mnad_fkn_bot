@@ -6,7 +6,7 @@ git commit -m "Initial commit: add .gitignore and README"
 # отправить на GitHub
 git push origin main -m "asdadqwd"
 
-# откатить изменения
+# откатить изменения d
 git checkout 70f1b3521f6f76e99751a506e6e0cc096ee27967 -- dockerfile
 
 
