@@ -19,38 +19,38 @@ from bot.handlers.auth import auth_service, login_start, logout as auth_logout
 
 logger = logging.getLogger(__name__)
 
+def _build_main_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    if auth_service.is_user_verified(user_id):
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📅 Расписание", callback_data="schedule"),
+                InlineKeyboardButton("🔔 Уведомления", callback_data="notify"),
+            ],
+            [
+                InlineKeyboardButton("📚 Задания", callback_data="tasks"),
+                InlineKeyboardButton("📖 Предметы", callback_data="subjects"),
+            ],
+            [InlineKeyboardButton("🚪 Выйти", callback_data="logout")],
+        ])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Авторизоваться", callback_data="login")]])
+
+
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать главное меню"""
     user_id = update.effective_user.id
     first_name = update.effective_user.first_name
-    
+
     if auth_service.is_user_verified(user_id):
         email = auth_service.get_user_email(user_id)
         text = f"👋 С возвращением, {first_name}!\n✅ Авторизован: {email}\n\nВыберите действие:"
-        
-        # Меню для авторизованных - все кнопки на одном уровне
-        keyboard = [
-            [
-                InlineKeyboardButton("📅 Расписание", callback_data="schedule"),
-                InlineKeyboardButton("🔔 Уведомления", callback_data="notify")
-            ],
-            [
-                InlineKeyboardButton("📚 Задания", callback_data="tasks"),
-                InlineKeyboardButton("📖 Предметы", callback_data="subjects")
-            ],
-            [
-                InlineKeyboardButton("🚪 Выйти", callback_data="logout")
-            ]
-        ]
     else:
         text = (
             f"👋 Привет, {first_name}!\n\n"
             "Я бот расписания МНАД ФКН ВШЭ.\n"
             "Для доступа к функциям авторизуйтесь через корпоративную почту."
         )
-        keyboard = [[InlineKeyboardButton("🔐 Авторизоваться", callback_data="login")]]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    reply_markup = _build_main_menu_keyboard(user_id)
     
     # Определяем, куда отправлять
     if update.callback_query:
@@ -112,6 +112,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Кнопка возврата в главное меню
     if query.data == "back_to_menu":
         await show_main_menu(update, context)
+        return
+
+    # OK на уведомлении — убираем кнопку и отправляем меню новым сообщением вниз
+    if query.data == "reminder_ok":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Выберите действие:",
+            reply_markup=_build_main_menu_keyboard(user_id),
+        )
         return
     
     # Проверка авторизации для остальных кнопок

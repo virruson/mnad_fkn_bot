@@ -52,9 +52,17 @@ def _format_lesson(sch) -> str:
 
 async def _send_reminder(context):
     """Отправляет напоминание одному пользователю об одном занятии."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     data = context.job.data  # {'chat_id': str, 'text': str}
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("OK  •  Открыть меню", callback_data="reminder_ok")
+    ]])
     try:
-        await context.bot.send_message(chat_id=data['chat_id'], text=data['text'])
+        await context.bot.send_message(
+            chat_id=data['chat_id'],
+            text=data['text'],
+            reply_markup=keyboard,
+        )
     except Exception as e:
         logger.error(f"_send_reminder: {data['chat_id']}: {e}")
 
@@ -133,7 +141,11 @@ async def daily_digest(context):
                     lessons = "\n\n".join(_format_lesson(s) for s in schedules)
                     text = f"{header}\n\n{lessons}"
 
-                await context.bot.send_message(chat_id=telegram_id, text=text)
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("OK  •  Открыть меню", callback_data="reminder_ok")
+                ]])
+                await context.bot.send_message(chat_id=telegram_id, text=text, reply_markup=keyboard)
 
                 if schedules:
                     _schedule_reminders_for_user(jq, user, schedules, today)
