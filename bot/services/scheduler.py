@@ -3,15 +3,16 @@
 Используем PTB JobQueue.
 
 Логика напоминаний:
-  - Утренний дайджест (10:00 МСК) знает расписание на день →
+  - Утренний дайджест (10:00 МСК) знает расписание на день и
     сразу ставит run_once на каждое занятие минус 15 мин.
   - При старте бота (on_startup) — то же самое, для занятий которые ещё не начались.
-  Таким образом, никакого поллинга каждую минуту — ровно N точечных джобов в день.
 """
 import logging
 from datetime import datetime, timedelta, time
 
 import pytz
+
+from sqlalchemy.orm import joinedload
 
 from bot.utils.database import SessionLocal, get_schedule_by_date
 from bot.models import User
@@ -98,15 +99,22 @@ async def daily_digest(context):
 
     db = SessionLocal()
     try:
-        users = db.query(User).filter(
+        # joinedload — загружаем stream сразу, без lazy load
+        users = db.query(User).options(joinedload(User.stream)).filter(
             User.notifications_enabled == True,
             User.is_verified == True,
             User.stream_id != None,
         ).all()
 
+        logger.warning(f"daily_digest: найдено подписчиков: {len(users)}, дата: {today}")
+
         for user in users:
             try:
-                schedules = get_schedule_by_date(db, today, stream_name=user.stream.name)
+                stream_name = user.stream.name if user.stream else None
+                logger.warning(f"daily_digest: user={user.telegram_id} stream={stream_name!r}")
+
+                schedules = get_schedule_by_date(db, today, stream_name=stream_name)
+                logger.warning(f"daily_digest: найдено занятий={len(schedules)} для stream={stream_name!r} на {today}")
 
                 # Отправляем дайджест
                 if not schedules:
@@ -114,7 +122,7 @@ async def daily_digest(context):
                 else:
                     day_names = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
                     weekday = day_names[today.weekday()]
-                    header = f"📅 Расписание на {today.strftime('%d.%m')} ({weekday})\nГруппа: {user.stream.name}"
+                    header = f"📅 Расписание на {today.strftime('%d.%m')} ({weekday})\nГруппа: {stream_name}"
                     lessons = "\n\n".join(_format_lesson(s) for s in schedules)
                     text = f"{header}\n\n{lessons}"
 
@@ -125,7 +133,7 @@ async def daily_digest(context):
                     _schedule_reminders_for_user(jq, user, schedules, today)
 
             except Exception as e:
-                logger.error(f"daily_digest: {user.telegram_id}: {e}")
+                logger.error(f"daily_digest: {user.telegram_id}: {e}", exc_info=True)
     finally:
         db.close()
 
@@ -145,7 +153,7 @@ async def on_startup(context):
 
     db = SessionLocal()
     try:
-        users = db.query(User).filter(
+        users = db.query(User).options(joinedload(User.stream)).filter(
             User.notifications_enabled == True,
             User.is_verified == True,
             User.stream_id != None,
@@ -154,12 +162,13 @@ async def on_startup(context):
         count = 0
         for user in users:
             try:
-                schedules = get_schedule_by_date(db, today, stream_name=user.stream.name)
+                stream_name = user.stream.name if user.stream else None
+                schedules = get_schedule_by_date(db, today, stream_name=stream_name)
                 if schedules:
                     _schedule_reminders_for_user(jq, user, schedules, today)
                     count += len(schedules)
             except Exception as e:
-                logger.error(f"on_startup reminders: {user.telegram_id}: {e}")
+                logger.error(f"on_startup reminders: {user.telegram_id}: {e}", exc_info=True)
 
         logger.info(f"✅ on_startup: проверено занятий={count} для {len(users)} пользователей")
     finally:
