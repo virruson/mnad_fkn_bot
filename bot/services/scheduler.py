@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 REMINDER_BEFORE = timedelta(minutes=15)
+ALL_STREAMS_NAME = "все потоки"  # специальный поток — без фильтрации
+
+
+def _stream_filter(user) -> str | None:
+    """Возвращает stream_name для фильтра или None (все потоки)."""
+    if not user.stream or user.stream.name == ALL_STREAMS_NAME:
+        return None
+    return user.stream.name
 
 
 # ---------------------------------------------------------------------------
@@ -110,11 +118,11 @@ async def daily_digest(context):
 
         for user in users:
             try:
-                stream_name = user.stream.name if user.stream else None
-                logger.warning(f"daily_digest: user={user.telegram_id} stream={stream_name!r}")
+                stream_name = _stream_filter(user)
+                display_name = user.stream.name if user.stream else "все потоки"
 
                 schedules = get_schedule_by_date(db, today, stream_name=stream_name)
-                logger.warning(f"daily_digest: найдено занятий={len(schedules)} для stream={stream_name!r} на {today}")
+                logger.warning(f"daily_digest: user={user.telegram_id} stream={display_name!r} занятий={len(schedules)}")
 
                 # Отправляем дайджест
                 if not schedules:
@@ -122,7 +130,7 @@ async def daily_digest(context):
                 else:
                     day_names = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
                     weekday = day_names[today.weekday()]
-                    header = f"📅 Расписание на {today.strftime('%d.%m')} ({weekday})\nГруппа: {stream_name}"
+                    header = f"📅 Расписание на {today.strftime('%d.%m')} ({weekday})\nГруппа: {display_name}"
                     lessons = "\n\n".join(_format_lesson(s) for s in schedules)
                     text = f"{header}\n\n{lessons}"
 
@@ -162,7 +170,7 @@ async def on_startup(context):
         count = 0
         for user in users:
             try:
-                stream_name = user.stream.name if user.stream else None
+                stream_name = _stream_filter(user)
                 schedules = get_schedule_by_date(db, today, stream_name=stream_name)
                 if schedules:
                     _schedule_reminders_for_user(jq, user, schedules, today)
