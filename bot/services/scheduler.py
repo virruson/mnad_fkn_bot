@@ -120,11 +120,16 @@ async def daily_digest(context):
             try:
                 stream_name = _stream_filter(user)
                 display_name = user.stream.name if user.stream else "все потоки"
+                telegram_id = user.telegram_id  # сохраняем до закрытия сессии
+            except Exception as e:
+                logger.error(f"daily_digest: ошибка чтения user: {e}", exc_info=True)
+                continue
 
-                schedules = get_schedule_by_date(db, today, stream_name=stream_name)
-                logger.warning(f"daily_digest: user={user.telegram_id} stream={display_name!r} занятий={len(schedules)}")
+            # Отдельная сессия для расписания — избегаем конфликта identity map
+            db2 = SessionLocal()
+            try:
+                schedules = get_schedule_by_date(db2, today, stream_name=stream_name)
 
-                # Отправляем дайджест
                 if not schedules:
                     text = f"📅 {today.strftime('%d.%m.%Y')} — занятий нет 🎉"
                 else:
@@ -134,14 +139,15 @@ async def daily_digest(context):
                     lessons = "\n\n".join(_format_lesson(s) for s in schedules)
                     text = f"{header}\n\n{lessons}"
 
-                await context.bot.send_message(chat_id=user.telegram_id, text=text)
+                await context.bot.send_message(chat_id=telegram_id, text=text)
 
-                # Ставим точечные напоминания
                 if schedules:
                     _schedule_reminders_for_user(jq, user, schedules, today)
 
             except Exception as e:
-                logger.error(f"daily_digest: {user.telegram_id}: {e}", exc_info=True)
+                logger.error(f"daily_digest: {telegram_id}: {e}", exc_info=True)
+            finally:
+                db2.close()
     finally:
         db.close()
 
@@ -169,14 +175,17 @@ async def on_startup(context):
 
         count = 0
         for user in users:
+            stream_name = _stream_filter(user)
+            db2 = SessionLocal()
             try:
-                stream_name = _stream_filter(user)
-                schedules = get_schedule_by_date(db, today, stream_name=stream_name)
+                schedules = get_schedule_by_date(db2, today, stream_name=stream_name)
                 if schedules:
                     _schedule_reminders_for_user(jq, user, schedules, today)
                     count += len(schedules)
             except Exception as e:
                 logger.error(f"on_startup reminders: {user.telegram_id}: {e}", exc_info=True)
+            finally:
+                db2.close()
 
         logger.info(f"✅ on_startup: проверено занятий={count} для {len(users)} пользователей")
     finally:
