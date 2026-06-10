@@ -114,16 +114,10 @@ async def daily_digest(context):
             User.stream_id != None,
         ).all()
 
-        logger.warning(f"daily_digest: найдено подписчиков: {len(users)}, дата: {today}")
-
         for user in users:
-            try:
-                stream_name = _stream_filter(user)
-                display_name = user.stream.name if user.stream else "все потоки"
-                telegram_id = user.telegram_id  # сохраняем до закрытия сессии
-            except Exception as e:
-                logger.error(f"daily_digest: ошибка чтения user: {e}", exc_info=True)
-                continue
+            stream_name = _stream_filter(user)
+            display_name = user.stream.name if user.stream else "все потоки"
+            telegram_id = user.telegram_id
 
             # Отдельная сессия для расписания — избегаем конфликта identity map
             db2 = SessionLocal()
