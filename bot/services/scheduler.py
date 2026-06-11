@@ -63,8 +63,9 @@ async def _send_reminder(context):
             text=data['text'],
             reply_markup=keyboard,
         )
+        logger.warning(f"[NOTIFY] reminder sent → {data['chat_id']} | {data.get('lesson_time', '?')}")
     except Exception as e:
-        logger.error(f"_send_reminder: {data['chat_id']}: {e}")
+        logger.error(f"[NOTIFY] reminder FAILED → {data['chat_id']}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -98,10 +99,14 @@ def _schedule_reminders_for_user(jq, user, schedules, today):
         jq.run_once(
             _send_reminder,
             when=remind_at,
-            data={'chat_id': user.telegram_id, 'text': text},
+            data={
+                'chat_id': user.telegram_id,
+                'text': text,
+                'lesson_time': lesson_time.strftime('%H:%M'),
+            },
             name=job_name,
         )
-        logger.info(f"⏰ Напоминание запланировано: {user.telegram_id} в {remind_at.strftime('%H:%M')} МСК")
+        logger.warning(f"[NOTIFY] reminder scheduled → {user.telegram_id} at {remind_at.strftime('%H:%M')} MSK (lesson {lesson_time.strftime('%H:%M')})")
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +151,7 @@ async def daily_digest(context):
                     InlineKeyboardButton("OK  •  Открыть меню", callback_data="reminder_ok")
                 ]])
                 await context.bot.send_message(chat_id=telegram_id, text=text, reply_markup=keyboard)
+                logger.warning(f"[NOTIFY] digest sent → {telegram_id} | lessons={len(schedules)}")
 
                 if schedules:
                     _schedule_reminders_for_user(jq, user, schedules, today)
