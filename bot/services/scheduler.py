@@ -176,6 +176,7 @@ async def on_startup(context):
     """
     jq = context.job_queue
     today = datetime.now(MOSCOW_TZ).date()
+    logger.warning(f"[NOTIFY] on_startup запущен, today={today}")
 
     db = SessionLocal()
     try:
@@ -199,7 +200,7 @@ async def on_startup(context):
             finally:
                 db2.close()
 
-        logger.info(f"✅ on_startup: проверено занятий={count} для {len(users)} пользователей")
+        logger.warning(f"[NOTIFY] on_startup: пользователей={len(users)} занятий_запланировано={count}")
     finally:
         db.close()
 
@@ -219,4 +220,4 @@ def setup_scheduler(application):
     # Один раз при старте — восстановить напоминания если бот перезапустился
     jq.run_once(on_startup, when=5, name="on_startup")  # через 5 сек после старта
 
-    logger.info("✅ Планировщик запущен (дайджест 10:00 МСК + восстановление при старте)")
+    logger.warning("[NOTIFY] Планировщик запущен (дайджест 10:00 МСК + восстановление при старте)")
