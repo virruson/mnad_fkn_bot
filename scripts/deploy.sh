@@ -45,8 +45,24 @@ git log --oneline "$LOCAL..$REMOTE"
 git pull --ff-only
 
 echo ""
-echo "=== [3/4] Пересборка образов ==="
-docker-compose build bot postgres-migrate
+echo "=== [3/4] Пересборка образов (только если нужно) ==="
+
+# Проверяем, изменились ли файлы, требующие ребилда
+REBUILD_TRIGGERS="requirements.txt Dockerfile dockerfile.migrations"
+NEED_REBUILD=0
+for f in $REBUILD_TRIGGERS; do
+    if git diff --name-only "$LOCAL" "$REMOTE" | grep -q "^$f$"; then
+        echo "📦 Изменён $f — нужен ребилд"
+        NEED_REBUILD=1
+    fi
+done
+
+if [ "$NEED_REBUILD" = "1" ]; then
+    docker-compose build bot postgres-migrate
+else
+    echo "✅ requirements.txt и Dockerfile не менялись — ребилд не нужен (код обновлён через volume)"
+fi
+
 docker-compose up -d --remove-orphans postgres bot
 
 echo ""
