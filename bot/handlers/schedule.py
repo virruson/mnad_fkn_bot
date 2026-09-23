@@ -58,8 +58,8 @@ async def today_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"  ⏰ **{lesson_time}** – {sch.subject_name} ({sch.lesson_type_name})\n"
                     f"     👨‍🏫 {teacher_name}\n"
                 )
-                if sch.Schedule.zoom_link:
-                    message += f"     🔗 [Zoom]({sch.Schedule.zoom_link})\n"
+                if sch.Schedule.meeting_link:
+                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
                 else:
                     message += f"     📍 Очное занятие\n"
             message += "\n"
@@ -165,8 +165,8 @@ async def show_today_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"📚 {sch.subject_name} ({sch.lesson_type_name})\n"
                 f"👨‍🏫 {teacher_name}\n"
             )
-            if sch.Schedule.zoom_link:
-                message += f"🔗 [Ссылка на Zoom]({sch.Schedule.zoom_link})\n"
+            if sch.Schedule.meeting_link:
+                message += f"🔗 [Ссылка на встречу]({sch.Schedule.meeting_link})\n"
             else:
                 message += f"📍 Очное занятие\n"
             message += "───────────────────\n\n"
@@ -317,9 +317,9 @@ async def schedule_week_callback(update: Update, context: ContextTypes.DEFAULT_T
                     f"     👨‍🏫 {teacher_name}\n"
                     f"     👥 {sch.stream_name}\n"
                 )
-                # Добавляем ссылку на Zoom, если есть
-                if sch.Schedule.zoom_link:
-                    message += f"     🔗 [Zoom]({sch.Schedule.zoom_link})\n"
+                # Добавляем ссылку на встречу, если есть
+                if sch.Schedule.meeting_link:
+                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
                 else:
                     message += f"     📍 Очное занятие\n"
             message += "\n"
@@ -405,9 +405,9 @@ async def schedule_next_week_callback(update: Update, context: ContextTypes.DEFA
                     f"     👨‍🏫 {teacher_name}\n"
                     f"     👥 {sch.stream_name}\n"
                 )
-                # Добавляем ссылку на Zoom, если есть
-                if sch.Schedule.zoom_link:
-                    message += f"     🔗 [Zoom]({sch.Schedule.zoom_link})\n"
+                # Добавляем ссылку на встречу, если есть
+                if sch.Schedule.meeting_link:
+                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
                 else:
                     message += f"     📍 Очное занятие\n"
             message += "\n"
@@ -500,9 +500,9 @@ async def schedule_month_callback(update: Update, context: ContextTypes.DEFAULT_
                     f"     👨‍🏫 {teacher_name}\n"
                     f"     👥 {sch.stream_name}\n"
                 )
-                # Добавляем ссылку на Zoom, если есть
-                if sch.Schedule.zoom_link:
-                    message += f"     🔗 [Zoom]({sch.Schedule.zoom_link})\n"
+                # Добавляем ссылку на встречу, если есть
+                if sch.Schedule.meeting_link:
+                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
                 else:
                     message += f"     📍 Очное занятие\n"
             message += "\n"
@@ -641,8 +641,8 @@ async def schedule_custom_to(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     f"  ⏰ {lesson_time} – {sch.subject_name} ({sch.lesson_type_name})\n"
                     f"     👨‍🏫 {teacher_name} | 👥 {sch.stream_name}\n"
                 )
-                if sch.Schedule.zoom_link:
-                    message += f"     🔗 [Zoom]({sch.Schedule.zoom_link})\n"
+                if sch.Schedule.meeting_link:
+                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
             message += "\n"
 
         # Telegram ограничивает сообщение 4096 символами

@@ -39,8 +39,8 @@ def _format_lesson(sch) -> str:
     t = sch.Schedule.lesson_time.strftime('%H:%M')
     teacher = f"{sch.last_name} {sch.first_name[0]}." if sch.first_name else sch.last_name
     lines = [f"⏰ {t}  {sch.subject_name} ({sch.lesson_type_name})", f"👨‍🏫 {teacher}"]
-    if sch.Schedule.zoom_link:
-        lines.append(f"🔗 {sch.Schedule.zoom_link}")
+    if sch.Schedule.meeting_link:
+        lines.append(f"🔗 {sch.Schedule.meeting_link}")
     else:
         lines.append("📍 Очное занятие")
     return "\n".join(lines)

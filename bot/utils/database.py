@@ -175,10 +175,10 @@ def format_schedule_message(schedules, title=None):
                 f"  ⏰ **{lesson_time}** – {sch.subject_name} ({sch.lesson_type_name})\n"
                 f"     👨‍🏫 {teacher_name}\n"
             )
-            if sch.Schedule.zoom_link:
+            if sch.Schedule.meeting_link:
                 # Сокращаем длинные ссылки для красоты
-                short_link = sch.Schedule.zoom_link[:30] + "..." if len(sch.Schedule.zoom_link) > 30 else sch.Schedule.zoom_link
-                message += f"     🔗 [Zoom]({sch.Schedule.zoom_link})\n"
+                short_link = sch.Schedule.meeting_link[:30] + "..." if len(sch.Schedule.meeting_link) > 30 else sch.Schedule.meeting_link
+                message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
             else:
                 message += f"     📍 Очное занятие\n"
         message += "\n"
@@ -207,8 +207,8 @@ def format_schedule_simple(schedules, title=None):
             f"👨‍🏫 {teacher_name}\n"
             f"👥 {sch.stream_name}\n"
         )
-        if sch.Schedule.zoom_link:
-            message += f"🔗 [Ссылка на Zoom]({sch.Schedule.zoom_link})\n"
+        if sch.Schedule.meeting_link:
+            message += f"🔗 [Ссылка на встречу]({sch.Schedule.meeting_link})\n"
         else:
             message += f"📍 Очное занятие\n"
         message += "───────────────────\n\n"

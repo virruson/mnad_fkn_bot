@@ -81,7 +81,7 @@ class Schedule(Base):
     lesson_type_id = Column(Integer, ForeignKey('lesson_types.id', ondelete='RESTRICT'), nullable=False)
     lesson_date = Column(Date, nullable=False, comment='Дата занятия')
     lesson_time = Column(Time, nullable=False, comment='Время занятия')
-    zoom_link = Column(Text, comment='Ссылка на Zoom')
+    meeting_link = Column(Text, comment='Ссылка на встречу (MTS-Link)')
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
     # Связи
@@ -113,8 +113,8 @@ class Schedule(Base):
             f"👥 {self.stream.name}",
         ]
         
-        if self.zoom_link:
-            lines.append(f"🔗 {self.zoom_link}")
+        if self.meeting_link:
+            lines.append(f"🔗 {self.meeting_link}")
         else:
             lines.append("📍 Очное занятие")
             

@@ -15,7 +15,7 @@
 
 --dry-run     — ничего не пишет в БД, только показывает, что было бы сделано
 --review-out  — сохраняет список "подозрительных" записей (без времени, без
-                ссылки на Zoom, из ячеек с несколькими занятиями) в текстовый
+                ссылки на встречу, из ячеек с несколькими занятиями) в текстовый
                 файл для ручной проверки
 """
 import argparse
@@ -85,7 +85,7 @@ def is_for_review(row):
     """Записи, которые стоит проверить руками после загрузки."""
     return (
         row.get('time_start') is None
-        or row.get('zoom_link') is None
+        or (row.get('meeting_link') or row.get('zoom_link')) is None
         or row.get('lesson_type') is None
     )
 
@@ -107,7 +107,9 @@ def import_rows(rows, dry_run=False):
 
             lesson_date = datetime.strptime(row['date'], '%Y-%m-%d').date()
 
-            stream_name = f"{row['stream']} поток" if row.get('stream') else DEFAULT_STREAM
+            # 'stream' уже содержит готовое имя группы/потока (например, "Маголего" или "1 поток") —
+            # суффикс "поток" не приклеиваем, чтобы не получить "Маголего поток"
+            stream_name = row['stream'] if row.get('stream') else DEFAULT_STREAM
             lesson_type_name = row.get('lesson_type') or DEFAULT_LESSON_TYPE
             first_name, last_name, middle_name = split_teacher_name(row.get('teacher'))
 
@@ -134,7 +136,7 @@ def import_rows(rows, dry_run=False):
                 for field, value in (
                     ('teacher_id', teacher.id),
                     ('lesson_type_id', lesson_type.id),
-                    ('zoom_link', row.get('zoom_link')),
+                    ('meeting_link', row.get('meeting_link') or row.get('zoom_link')),
                 ):
                     if getattr(existing, field) != value:
                         setattr(existing, field, value)
@@ -149,7 +151,7 @@ def import_rows(rows, dry_run=False):
                     lesson_type_id=lesson_type.id,
                     lesson_date=lesson_date,
                     lesson_time=time_start,
-                    zoom_link=row.get('zoom_link'),
+                    meeting_link=row.get('meeting_link') or row.get('zoom_link'),
                 ))
                 stats['created'] += 1
 
@@ -170,14 +172,14 @@ def import_rows(rows, dry_run=False):
 def write_review(review, path):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(f"Записей для ручной проверки: {len(review)}\n")
-        f.write("(нет времени, и/или нет ссылки на Zoom, и/или не определён тип занятия)\n\n")
+        f.write("(нет времени, и/или нет ссылки на встречу, и/или не определён тип занятия)\n\n")
         for row in review:
             f.write(
                 f"{row['date']} | ячейка {row['cell']} | "
                 f"{row.get('time_start') or '??:??'}-{row.get('time_end') or '??:??'} | "
                 f"{row['subject']} | преп.: {row.get('teacher')} | "
                 f"тип: {row.get('lesson_type')} | поток: {row.get('stream')} | "
-                f"zoom: {row.get('zoom_link')}\n"
+                f"ссылка: {row.get('meeting_link') or row.get('zoom_link')}\n"
                 f"    исходная строка: {row.get('raw_line')}\n"
             )
 
