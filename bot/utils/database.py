@@ -138,9 +138,11 @@ def get_week_schedule(db, stream_name=None):
     return query.order_by(Schedule.lesson_date, Schedule.lesson_time).all()
 
 def get_streams(db):
-    """Получить список всех потоков"""
+    """Получить список потоков для меню (без устаревших '1 поток'/'2 поток')"""
     from bot.models import Stream
-    return db.query(Stream).order_by(Stream.name).all()
+    return db.query(Stream).filter(
+        Stream.name.notin_(['1 поток', '2 поток'])
+    ).order_by(Stream.name).all()
 
 def format_schedule_message(schedules, title=None):
     """
