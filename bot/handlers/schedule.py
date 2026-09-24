@@ -16,6 +16,7 @@ from bot.utils.database import (
     format_schedule_simple
 )
 from bot.models import Stream, Subject, Teacher, LessonType, Schedule
+from bot.utils.ui import show_screen
 
 # Состояния ConversationHandler для ввода произвольного периода
 CUSTOM_FROM = 10
@@ -90,20 +91,10 @@ async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     message = "📅 **Выберите период для просмотра расписания:**"
-    
-    # Определяем, откуда пришел вызов
-    if update.callback_query:
-        await update.callback_query.edit_message_text(
-            message, 
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
-    else:
-        await update.message.reply_text(
-            message, 
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+
+    # show_screen: правит текущее сообщение (кнопка) или удаляет предыдущий
+    # экран и шлёт новое (команда /schedule) — история в чате не копится
+    await show_screen(update, context, message, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def show_schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать расписание (обработчик нажатия на кнопку)"""
@@ -185,12 +176,11 @@ async def show_today_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.close()
 
 async def schedule_today_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать расписание на сегодня для всех потоков"""
-    query = update.callback_query
+    """Показать расписание на сегодня для всех потоков (кнопка "Сегодня" или команда /today)"""
     user_id = update.effective_user.id
-    
+
     if not auth_service.is_user_verified(user_id):
-        await query.edit_message_text("🔐 Требуется авторизация")
+        await show_screen(update, context, "🔐 Требуется авторизация")
         return
     
     db = SessionLocal()
@@ -206,7 +196,8 @@ async def schedule_today_callback(update: Update, context: ContextTypes.DEFAULT_
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if not schedules:
-            await query.edit_message_text(
+            await show_screen(
+                update, context,
                 f"📅 На {today.strftime('%d.%m.%Y')} занятий нет 🎉",
                 reply_markup=reply_markup
             )
@@ -214,8 +205,8 @@ async def schedule_today_callback(update: Update, context: ContextTypes.DEFAULT_
         
         message = format_schedule_message(schedules, f"📅 Расписание на {today.strftime('%d.%m.%Y')}")
         
-        await query.edit_message_text(
-            message,
+        await show_screen(
+            update, context, message,
             reply_markup=reply_markup,
             parse_mode='Markdown',
             disable_web_page_preview=True

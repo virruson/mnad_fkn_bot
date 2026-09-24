@@ -16,6 +16,7 @@ from bot.handlers.schedule import (
     show_today_schedule
 )
 from bot.handlers.auth import auth_service, login_start, logout as auth_logout
+from bot.utils.ui import show_screen
 
 logger = logging.getLogger(__name__)
 
@@ -51,24 +52,13 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     reply_markup = _build_main_menu_keyboard(user_id)
-    
-    # Определяем, куда отправлять
+
     if update.callback_query:
         await update.callback_query.answer()
-        try:
-            await update.callback_query.edit_message_text(
-                text=text,
-                reply_markup=reply_markup
-            )
-        except BadRequest:
-            # Сообщение нельзя отредактировать (слишком старое или медиа) — шлём новое
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text,
-                reply_markup=reply_markup
-            )
-    else:
-        await update.message.reply_text(text, reply_markup=reply_markup)
+
+    # show_screen: правит текущее сообщение (кнопка) или удаляет предыдущий
+    # экран и шлёт новое (команда /start) — в чате остаётся один активный экран
+    await show_screen(update, context, text, reply_markup=reply_markup)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
