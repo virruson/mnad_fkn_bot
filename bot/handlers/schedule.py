@@ -287,16 +287,18 @@ async def schedule_week_callback(update: Update, context: ContextTypes.DEFAULT_T
             )
             return
         
-        # Группируем по дням
+        # Группируем по дням: ключ — реальная дата (не строка!), иначе при
+        # сортировке "01.10.2026" оказывается раньше "28.09.2026" по алфавиту
+        # и период, пересекающий границу месяца, показывается вперемешку
         days = defaultdict(list)
         for sch in schedules:
-            day = sch.Schedule.lesson_date.strftime('%d.%m.%Y')
-            days[day].append(sch)
+            days[sch.Schedule.lesson_date].append(sch)
         
         message = f"📅 **Расписание на неделю {monday.strftime('%d.%m')} - {sunday.strftime('%d.%m.%Y')}**\n\n"
         
-        for day, lessons in sorted(days.items()):
-            message += f"**{day}:**\n"
+        for day in sorted(days):
+            lessons = days[day]
+            message += f"**{day.strftime('%d.%m.%Y')}:**\n"
             for sch in lessons:
                 lesson_time = sch.Schedule.lesson_time.strftime('%H:%M')
                 teacher_name = f"{sch.last_name} {sch.first_name}"
@@ -314,7 +316,11 @@ async def schedule_week_callback(update: Update, context: ContextTypes.DEFAULT_T
                 else:
                     message += f"     📍 Очное занятие\n"
             message += "\n"
-        
+
+        # Telegram ограничивает сообщение 4096 символами
+        if len(message) > 4000:
+            message = message[:3950] + "\n\n_...список обрезан, уточните период_"
+
         await query.edit_message_text(
             message,
             reply_markup=reply_markup,
@@ -375,16 +381,18 @@ async def schedule_next_week_callback(update: Update, context: ContextTypes.DEFA
             )
             return
         
-        # Группируем по дням
+        # Группируем по дням: ключ — реальная дата (не строка!), иначе при
+        # сортировке "01.10.2026" оказывается раньше "28.09.2026" по алфавиту
+        # и период, пересекающий границу месяца, показывается вперемешку
         days = defaultdict(list)
         for sch in schedules:
-            day = sch.Schedule.lesson_date.strftime('%d.%m.%Y')
-            days[day].append(sch)
+            days[sch.Schedule.lesson_date].append(sch)
         
         message = f"📅 **Расписание на следующую неделю {next_monday.strftime('%d.%m')} - {next_sunday.strftime('%d.%m.%Y')}**\n\n"
         
-        for day, lessons in sorted(days.items()):
-            message += f"**{day}:**\n"
+        for day in sorted(days):
+            lessons = days[day]
+            message += f"**{day.strftime('%d.%m.%Y')}:**\n"
             for sch in lessons:
                 lesson_time = sch.Schedule.lesson_time.strftime('%H:%M')
                 teacher_name = f"{sch.last_name} {sch.first_name}"
@@ -402,7 +410,11 @@ async def schedule_next_week_callback(update: Update, context: ContextTypes.DEFA
                 else:
                     message += f"     📍 Очное занятие\n"
             message += "\n"
-        
+
+        # Telegram ограничивает сообщение 4096 символами
+        if len(message) > 4000:
+            message = message[:3950] + "\n\n_...список обрезан, уточните период_"
+
         await query.edit_message_text(
             message,
             reply_markup=reply_markup,
@@ -470,16 +482,18 @@ async def schedule_month_callback(update: Update, context: ContextTypes.DEFAULT_
             )
             return
         
-        # Группируем по дням
+        # Группируем по дням: ключ — реальная дата (не строка!), иначе при
+        # сортировке "01.10.2026" оказывается раньше "28.09.2026" по алфавиту
+        # и период, пересекающий границу месяца, показывается вперемешку
         days = defaultdict(list)
         for sch in schedules:
-            day = sch.Schedule.lesson_date.strftime('%d.%m.%Y')
-            days[day].append(sch)
+            days[sch.Schedule.lesson_date].append(sch)
         
         message = f"📅 **Расписание на {month_str}.{year_str}**\n\n"
         
-        for day, lessons in sorted(days.items()):
-            message += f"**{day}:**\n"
+        for day in sorted(days):
+            lessons = days[day]
+            message += f"**{day.strftime('%d.%m.%Y')}:**\n"
             for sch in lessons:
                 lesson_time = sch.Schedule.lesson_time.strftime('%H:%M')
                 teacher_name = f"{sch.last_name} {sch.first_name}"
@@ -497,7 +511,11 @@ async def schedule_month_callback(update: Update, context: ContextTypes.DEFAULT_
                 else:
                     message += f"     📍 Очное занятие\n"
             message += "\n"
-        
+
+        # Telegram ограничивает сообщение 4096 символами
+        if len(message) > 4000:
+            message = message[:3950] + "\n\n_...список обрезан, уточните период_"
+
         await query.edit_message_text(
             message,
             reply_markup=reply_markup,
