@@ -2,6 +2,7 @@
 _remove/
 .env
 *.json
+!scripts/deadlines.json
 credentials.json
 *.xlsx
 volume_backup.tar.gz

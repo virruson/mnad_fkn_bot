@@ -1,31 +1,36 @@
 #!/usr/bin/env python
 """
-Загрузка дедлайнов, формул оценивания и модулей из Google Sheet или .xlsx.
+Загрузка дедлайнов, формул оценивания и модулей в БД.
+
+Источник по умолчанию — scripts/deadlines.json (лежит в git, на сервер попадает
+вместе с коммитом; deploy.sh сам запускает импорт, если файл изменился).
 
 Использование:
-    python -m scripts.import_deadlines --xlsx scripts/deadlines_import.xlsx --dry-run
-    python -m scripts.import_deadlines --xlsx scripts/deadlines_import.xlsx
-    python -m scripts.import_deadlines --sheet-id <ID таблицы> [--dry-run]
+    python -m scripts.import_deadlines --dry-run        # показать, что будет загружено
+    python -m scripts.import_deadlines                  # загрузить scripts/deadlines.json
+    python -m scripts.import_deadlines --json other.json
+    python -m scripts.import_deadlines --sheet-id <ID>  # то же из Google Sheet (вкладки
+        «Дедлайны», «Формулы», «Модули»; ключ — --credentials или GOOGLE_CREDENTIALS)
 
-ID таблицы можно задать переменной DEADLINES_SHEET_ID, путь к ключу сервисного
-аккаунта — --credentials или GOOGLE_CREDENTIALS (по умолчанию scripts/credentials.json).
-Таблицу нужно открыть на чтение для e-mail сервисного аккаунта.
-
-Вкладки (первая строка — заголовки):
-  «Дедлайны»  Предмет | Тип (ДЗ / Квиз / КВИЗ/КР / КР) | Название | Дата | Время
-  «Формулы»   Предмет | Формула | Короткое название (необязательно)
-  «Модули»    Название | Начало | Конец               (необязательная вкладка)
-
-Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, время — ЧЧ:ММ (пустое = 23:59).
-Предмет ищется по точному названию из расписания; не найден — warning, строка пропускается.
+Формат deadlines.json:
+    {
+      "modules":   [{"name": "5 модуль", "start": "05.09.2026", "end": "26.10.2026"}],
+      "subjects":  [{"name": "Продвинутое машинное обучение", "short_name": "Продвинутое МО",
+                     "formula": "0.3·ДЗ + 0.2·Квизы + 0.5·КР"}],
+      "deadlines": [{"subject": "Продвинутое машинное обучение", "type": "ДЗ",
+                     "title": "№1", "date": "03.10.2026", "time": "18:00"}]
+    }
+type — ДЗ / Квиз / КВИЗ/КР / КР. Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, time можно не
+указывать (= 23:59). Предмет ищется по точному названию из расписания; не найден —
+WARNING, запись пропускается.
 
 Скрипт:
   - upsert дедлайнов по ключу предмет + тип + название (меняются дата и время)
   - upsert формул и коротких названий предметов, модулей по названию
   - НЕ удаляет ничего из БД
---dry-run — ничего не пишет в БД, только показывает, что было бы сделано
 """
 import argparse
+import json
 import os
 import sys
 from datetime import datetime
@@ -40,6 +45,7 @@ from bot.models import Subject, Deadline, Module
 KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test'}
 TAB_DEADLINES, TAB_FORMULAS, TAB_MODULES = "Дедлайны", "Формулы", "Модули"
 DEFAULT_CREDENTIALS = Path(__file__).resolve().parent / "credentials.json"
+DEFAULT_JSON = Path(__file__).resolve().parent / "deadlines.json"
 
 
 def fetch_tabs(sheet_id, credentials):
@@ -55,24 +61,19 @@ def fetch_tabs(sheet_id, credentials):
     return tabs
 
 
-def fetch_xlsx(path):
-    """То же, что fetch_tabs, но из файла .xlsx с теми же вкладками."""
-    from datetime import date, time
-    from openpyxl import load_workbook
-
-    def text(v):
-        if isinstance(v, datetime):
-            return v.strftime('%H:%M') if v.date() == date(1899, 12, 30) else v.strftime('%d.%m.%Y')
-        if isinstance(v, date):
-            return v.strftime('%d.%m.%Y')
-        if isinstance(v, time):
-            return v.strftime('%H:%M')
-        return '' if v is None else str(v)
-
-    wb = load_workbook(path, read_only=True, data_only=True)
-    return {title: ([[text(v) for v in row] for row in wb[title].iter_rows(min_row=2, values_only=True)]
-                    if title in wb.sheetnames else None)
-            for title in (TAB_DEADLINES, TAB_FORMULAS, TAB_MODULES)}
+def fetch_json(path):
+    """deadlines.json → те же строки, что и вкладки Google Sheet."""
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+    return {
+        TAB_MODULES: [[m.get('name') or '', m.get('start') or '', m.get('end') or '']
+                      for m in data.get('modules', [])],
+        TAB_FORMULAS: [[s.get('name') or '', s.get('formula') or '', s.get('short_name') or '']
+                       for s in data.get('subjects', [])],
+        TAB_DEADLINES: [[d.get('subject') or '', d.get('type') or '', d.get('title') or '',
+                         d.get('date') or '', d.get('time') or '']
+                        for d in data.get('deadlines', [])],
+    }
 
 
 def parse_date(value):
@@ -241,25 +242,23 @@ def run(tabs, dry_run=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Загрузка дедлайнов и формул из Google Sheet или .xlsx")
-    parser.add_argument('--xlsx', help="файл .xlsx с вкладками Дедлайны/Формулы/Модули вместо Google Sheet")
-    parser.add_argument('--sheet-id', default=os.getenv('DEADLINES_SHEET_ID'),
-                        help="ID Google-таблицы (или переменная DEADLINES_SHEET_ID)")
+    parser = argparse.ArgumentParser(description="Загрузка дедлайнов, формул и модулей в БД")
+    parser.add_argument('--json', default=str(DEFAULT_JSON), help="файл JSON (по умолчанию scripts/deadlines.json)")
+    parser.add_argument('--sheet-id', help="взять данные из Google Sheet вместо JSON")
     parser.add_argument('--credentials', default=os.getenv('GOOGLE_CREDENTIALS', str(DEFAULT_CREDENTIALS)),
-                        help="JSON-ключ сервисного аккаунта")
+                        help="JSON-ключ сервисного аккаунта Google")
     parser.add_argument('--dry-run', action='store_true', help="не сохранять изменения в БД")
     args = parser.parse_args()
-    if args.xlsx:
-        tabs = fetch_xlsx(args.xlsx)
-    elif args.sheet_id:
+
+    if args.sheet_id:
         tabs = fetch_tabs(args.sheet_id, args.credentials)
     else:
-        parser.error("укажите --xlsx, --sheet-id или DEADLINES_SHEET_ID")
+        print(f"Источник: {args.json}")
+        tabs = fetch_json(args.json)
 
     stats = run(tabs, dry_run=args.dry_run)
     print(f"Создано: {stats['created']}, обновлено: {stats['updated']}, "
           f"без изменений: {stats['unchanged']}, пропущено: {stats['skipped']}")
-
 
 if __name__ == '__main__':
     main()

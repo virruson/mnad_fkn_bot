@@ -69,6 +69,13 @@ echo ""
 echo "=== [4/4] Применение миграций БД ==="
 docker-compose run --rm postgres-migrate
 
+# Дедлайны лежат в git: если scripts/deadlines.json изменился — загружаем в БД
+if git diff --name-only "$LOCAL" "$REMOTE" | grep -q "^scripts/deadlines.json$"; then
+    echo ""
+    echo "=== Дедлайны: scripts/deadlines.json изменён — импорт ==="
+    docker-compose exec -T bot python -m scripts.import_deadlines
+fi
+
 echo ""
 echo "=== Готово. Текущий статус контейнеров: ==="
 docker-compose ps
