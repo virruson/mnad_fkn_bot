@@ -10,7 +10,7 @@ from html import escape
 
 import pytz
 
-from bot.models import Deadline, Module, Schedule, Subject
+from bot.models import Deadline, LessonType, Module, Schedule, Subject
 
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 END_OF_DAY = time(23, 59)
@@ -20,6 +20,7 @@ BLOCK_MAX_LINES = 4
 NAME_LIMIT = 25
 NO_INFO = "<i>нет информации</i>"
 WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
+NOT_A_SUBJECT = ('Встреча',)  # типы занятий, которые не делают запись предметом
 
 KIND_BLOCKS = (          # порядок блоков в карточке
     ('hw', '📝', 'ДЗ'),
@@ -79,9 +80,11 @@ def get_current_module(db, today: date):
 
 
 def get_module_subjects(db, module: Module) -> list:
-    """Предметы модуля: DISTINCT subject из schedule в пределах дат модуля."""
+    """Предметы модуля: DISTINCT subject из schedule в пределах дат модуля (без встреч)."""
     subject_ids = (db.query(Schedule.subject_id)
-                   .filter(Schedule.lesson_date.between(module.start_date, module.end_date))
+                   .join(LessonType, Schedule.lesson_type_id == LessonType.id)
+                   .filter(Schedule.lesson_date.between(module.start_date, module.end_date),
+                           LessonType.name.notin_(NOT_A_SUBJECT))
                    .distinct())
     return db.query(Subject).filter(Subject.id.in_(subject_ids)).all()
 
