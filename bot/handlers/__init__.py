@@ -4,7 +4,7 @@
 from . import commands
 from . import schedule
 from . import notifications
-from . import tasks
+from . import deadlines
 from . import subjects
 
-__all__ = ['commands', 'schedule', 'notifications', 'tasks', 'subjects']
+__all__ = ['commands', 'schedule', 'notifications', 'deadlines', 'subjects']

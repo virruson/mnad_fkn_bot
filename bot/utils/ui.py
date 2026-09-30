@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 SCREEN_MSG_KEY = "screen_msg_id"
 
 
-async def show_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, **kwargs):
+async def show_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str,
+                      new_message: bool = False, **kwargs):
     """
     Показывает «экран» пользователю.
 
@@ -28,13 +29,16 @@ async def show_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, text: 
     Если update пришёл от команды/текста — удаляет предыдущий экран (если он есть
     и ещё не удалён) и отправляет новое сообщение.
 
+    new_message=True — даже при нажатии кнопки не править сообщение, а заменить
+    текущий экран новым (кнопка под фоновым сообщением: его трогать нельзя).
+
     kwargs пробрасываются в edit_message_text/send_message
     (reply_markup, parse_mode, disable_web_page_preview и т.п.).
     """
     query = update.callback_query
     chat_id = update.effective_chat.id
 
-    if query is not None:
+    if query is not None and not new_message:
         try:
             await query.edit_message_text(text, **kwargs)
             context.chat_data[SCREEN_MSG_KEY] = query.message.message_id

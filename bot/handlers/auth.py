@@ -165,7 +165,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #         f"Доступные команды:\n"
 #         f"/schedule - Расписание\n"
 #         f"/notify - Уведомления\n"
-#         f"/tasks - Задания\n"
+#         f"/deadlines - Дедлайны\n"
 #         f"/subjects - Предметы\n"
 #         f"/logout - Выйти"
 #     )

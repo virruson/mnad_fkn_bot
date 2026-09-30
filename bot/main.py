@@ -10,7 +10,8 @@ from telegram.error import BadRequest  # Добавляем импорт для 
 from bot.handlers.commands import start, help_command, button_callback
 from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages
-from bot.handlers.notifications import notify_menu, notify_setup, notify_subscribe, notify_disable
+from bot.handlers.notifications import notify_menu, notify_setup, notify_subscribe, notify_toggle
+from bot.handlers.deadlines import show_deadlines, show_subject_card, open_deadlines_from_digest
 from bot.services.scheduler import setup_scheduler
 
 # Импортируем обработчики расписания
@@ -87,6 +88,7 @@ def main():
     application.add_handler(CommandHandler("logout", auth.logout))
     application.add_handler(CommandHandler("schedule", show_schedule))
     application.add_handler(CommandHandler("today", schedule_today_callback))
+    application.add_handler(CommandHandler(["deadlines", "tasks"], show_deadlines))  # /tasks — старый алиас
 
     # 4. Callback-кнопки (порядок важен)
     application.add_handler(CallbackQueryHandler(auth.login_start, pattern="^login$"))
@@ -100,9 +102,14 @@ def main():
     application.add_handler(CallbackQueryHandler(show_today_schedule, pattern="^stream_\\d+$"))
     # Уведомления
     application.add_handler(CallbackQueryHandler(notify_menu,      pattern="^notify_menu$"))
+    application.add_handler(CallbackQueryHandler(notify_menu,      pattern="^notify$"))
     application.add_handler(CallbackQueryHandler(notify_setup,     pattern="^notify_setup$"))
     application.add_handler(CallbackQueryHandler(notify_subscribe, pattern="^notify_stream_\\d+$"))
-    application.add_handler(CallbackQueryHandler(notify_disable,   pattern="^notify_disable$"))
+    application.add_handler(CallbackQueryHandler(notify_toggle,    pattern="^notify_toggle_\\w+$"))
+    # Дедлайны
+    application.add_handler(CallbackQueryHandler(show_deadlines,             pattern="^deadlines$"))
+    application.add_handler(CallbackQueryHandler(show_subject_card,          pattern="^deadlines_subj_\\d+$"))
+    application.add_handler(CallbackQueryHandler(open_deadlines_from_digest, pattern="^deadlines_open$"))
     # универсальный — последним
     application.add_handler(CallbackQueryHandler(button_callback))
 

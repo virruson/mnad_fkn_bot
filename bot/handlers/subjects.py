@@ -16,7 +16,7 @@ async def show_subjects_callback(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("📊 Математический анализ", callback_data="subject_math")],
         [InlineKeyboardButton("🐍 Python", callback_data="subject_python")],
         [InlineKeyboardButton("📐 Линейная алгебра", callback_data="subject_linear")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     

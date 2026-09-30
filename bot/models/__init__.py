@@ -22,9 +22,12 @@ class Subject(Base):
     
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False, comment='Название предмета')
+    short_name = Column(String(50), nullable=True, comment='Короткое имя для кнопок, до 25 символов')
+    grading_formula = Column(Text, nullable=True, comment='Правая часть: 0.3·ДЗ + 0.2·Квизы + 0.5·КР')
     
     # Связи
     schedules = relationship("Schedule", back_populates="subject")
+    deadlines = relationship("Deadline", back_populates="subject")
     
     def __repr__(self):
         return f"<Subject {self.name}>"
@@ -138,7 +141,9 @@ class User(Base):
     verified_at = Column(DateTime, comment='Дата верификации')
     last_login = Column(DateTime, comment='Последний вход')
     stream_id = Column(Integer, ForeignKey('streams.id', ondelete='SET NULL'), nullable=True)
-    notifications_enabled = Column(Boolean, default=False, nullable=False)
+    digest_enabled = Column(Boolean, default=False, nullable=False, comment='Расписание на день в 10:00')
+    reminders_enabled = Column(Boolean, default=False, nullable=False, comment='Напоминание за 15 мин')
+    deadlines_enabled = Column(Boolean, default=False, nullable=False, comment='Дедлайны за 4, 2, 1 дн')
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -147,5 +152,37 @@ class User(Base):
     def __repr__(self):
         return f"<User {self.telegram_id}: {self.email}>"
 
+class Module(Base):
+    """Учебный модуль. Текущий — тот, в диапазон дат которого попадает сегодня."""
+    __tablename__ = 'modules'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+
+    def __repr__(self):
+        return f"<Module {self.name} {self.start_date}..{self.end_date}>"
+
+
+class Deadline(Base):
+    """Дедлайн по предмету, общий для всех групп."""
+    __tablename__ = 'deadlines'
+
+    KINDS = ('hw', 'quiz', 'test')
+
+    id = Column(Integer, primary_key=True)
+    subject_id = Column(Integer, ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
+    kind = Column(String(10), nullable=False, comment='hw | quiz | test')
+    title = Column(String(255), nullable=False)
+    due_date = Column(Date, nullable=False)
+    due_time = Column(Time, nullable=True, comment='NULL = 23:59')
+
+    subject = relationship("Subject", back_populates="deadlines")
+
+    def __repr__(self):
+        return f"<Deadline {self.kind} {self.title} {self.due_date}>"
+
+
 # Экспортируем все модели
-__all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule', 'User']
+__all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule', 'User', 'Module', 'Deadline']

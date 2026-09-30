@@ -86,7 +86,7 @@ async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📅 На следующую неделю", callback_data="schedule_next_week")],
         [InlineKeyboardButton("📆 На месяц", callback_data="schedule_month")],
         [InlineKeyboardButton("🗓 Указать период", callback_data="schedule_custom")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_menu")]
     ]   
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -162,7 +162,7 @@ async def show_today_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
                 message += f"📍 Очное занятие\n"
             message += "───────────────────\n\n"
         
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="schedule")]]
+        keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="schedule")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(

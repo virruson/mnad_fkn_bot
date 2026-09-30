@@ -28,7 +28,7 @@ def _build_main_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("🔔 Уведомления", callback_data="notify"),
             ],
             [
-                InlineKeyboardButton("📚 Задания", callback_data="tasks"),
+                InlineKeyboardButton("⏳ Дедлайны", callback_data="deadlines"),
                 InlineKeyboardButton("📖 Предметы", callback_data="subjects"),
             ],
             [InlineKeyboardButton("🚪 Выйти", callback_data="logout")],
@@ -70,6 +70,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Начать\n"
         "/schedule - Расписание\n"
         "/today - Расписание на сегодня\n"
+        "/deadlines - Дедлайны\n"
         "/login - Авторизация\n"
         "/logout - Выйти\n\n"
         "📅 **Доступные периоды расписания:**\n"
@@ -140,19 +141,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("stream_"):
         await show_today_schedule(update, context)
     
-    # Уведомления — делегируем в notifications.py
-    elif query.data == "notify":
-        from bot.handlers.notifications import notify_menu
-        await notify_menu(update, context)
-    elif query.data == "tasks":
-        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            text="📚 Задания\n\n"
-                 "Здесь будут отображаться домашние задания.\n"
-                 "Функция в разработке.",
-            reply_markup=reply_markup,
-        )
     elif query.data == "subjects":
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)

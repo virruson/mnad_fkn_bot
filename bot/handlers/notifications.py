@@ -1,126 +1,164 @@
 """
-Обработчики меню уведомлений
+Меню «🔔 Уведомления»: три независимых переключателя и выбор группы.
+Макет — docs/ui_deadlines.md, раздел 3.
 """
 import logging
 from datetime import datetime
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from telegram.error import BadRequest
 
 from bot.handlers.auth import auth_service
-from bot.utils.database import SessionLocal, get_streams
 from bot.models import User
+from bot.services.scheduler import replan_reminders_for_user
+from bot.utils.database import SessionLocal, get_streams
+from bot.utils.ui import show_screen
 
 logger = logging.getLogger(__name__)
 
+# ключ callback → (поле User, подпись кнопки, нужна ли группа)
+TOGGLES = {
+    'digest':    ('digest_enabled',    "Расписание на день", True),
+    'reminders': ('reminders_enabled', "За 15 мин до пары",  True),
+    'deadlines': ('deadlines_enabled', "Дедлайны",           False),
+}
+PENDING_KEY = "notify_pending_toggle"
 
-# ---------------------------------------------------------------------------
-# Вспомогательные функции
-# ---------------------------------------------------------------------------
 
 def _get_user(db, user_id: int):
     return db.query(User).filter(User.telegram_id == str(user_id)).first()
 
 
-async def _edit_or_send(query, text: str, reply_markup=None):
+async def _require_auth(update: Update, context) -> bool:
+    if auth_service.is_user_verified(update.effective_user.id):
+        return True
+    await show_screen(update, context, "🔐 Сначала авторизуйтесь.")
+    return False
+
+
+def _status_line(user) -> str:
+    if not user.stream:
+        return "Группа не выбрана"
+    enabled = sum(getattr(user, field) for field, _, _ in TOGGLES.values())
+    if not enabled:
+        return "🔕 Все уведомления выключены"
+    return f"Включено {enabled} из {len(TOGGLES)} · утром в 10:00 МСК"
+
+
+async def _render_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = SessionLocal()
     try:
-        await query.edit_message_text(text=text, reply_markup=reply_markup)
-    except BadRequest:
-        await query.message.reply_text(text=text, reply_markup=reply_markup)
+        user = _get_user(db, update.effective_user.id)
+        if not user:
+            await show_screen(update, context, "❌ Пользователь не найден. Авторизуйтесь заново.")
+            return
+        text = f"🔔 <b>Уведомления</b>\n{_status_line(user)}"
+        keyboard = [
+            [InlineKeyboardButton(f"{'✅' if getattr(user, field) else '☐'} {label}",
+                                  callback_data=f"notify_toggle_{key}")]
+            for key, (field, label, _) in TOGGLES.items()
+        ]
+        group = user.stream.name if user.stream else "не выбрана"
+        keyboard.append([InlineKeyboardButton(f"👥 Группа: {group}", callback_data="notify_setup")])
+        keyboard.append([InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")])
+    finally:
+        db.close()
+
+    await show_screen(update, context, text,
+                      reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 # ---------------------------------------------------------------------------
-# Главное меню уведомлений
+# Меню
 # ---------------------------------------------------------------------------
 
 async def notify_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    await update.callback_query.answer()
+    context.user_data.pop(PENDING_KEY, None)
+    if await _require_auth(update, context):
+        await _render_menu(update, context)
 
-    user_id = update.effective_user.id
-    if not auth_service.is_user_verified(user_id):
-        await _edit_or_send(query, "🔐 Сначала авторизуйтесь.")
+
+# ---------------------------------------------------------------------------
+# Переключатели: notify_toggle_<digest|reminders|deadlines>
+# ---------------------------------------------------------------------------
+
+async def notify_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    key = query.data.removeprefix("notify_toggle_")
+    if key not in TOGGLES or not auth_service.is_user_verified(update.effective_user.id):
+        await query.answer()
         return
+    field, label, needs_group = TOGGLES[key]
 
     db = SessionLocal()
     try:
-        user = _get_user(db, user_id)
-        if user and user.notifications_enabled and user.stream:
-            status = f"✅ Уведомления включены\nГруппа: {user.stream.name}"
-        else:
-            status = "🔕 Уведомления отключены"
+        user = _get_user(db, update.effective_user.id)
+        if not user:
+            await query.answer()
+            return
+        new_value = not getattr(user, field)
+        if new_value and needs_group and not user.stream_id:
+            # Сначала группа, флаг включится после её выбора
+            context.user_data[PENDING_KEY] = key
+            await query.answer("Сначала выберите группу")
+            await _show_group_picker(update, context)
+            return
+        setattr(user, field, new_value)
+        user.updated_at = datetime.now()
+        db.commit()
     finally:
         db.close()
 
-    keyboard = [
-        [InlineKeyboardButton("⚙️ Настроить уведомления", callback_data="notify_setup")],
-        [InlineKeyboardButton("🔕 Отключить уведомления", callback_data="notify_disable")],
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")],
-    ]
-    await _edit_or_send(
-        query,
-        f"🔔 Уведомления\n\n{status}\n\n"
-        "Каждое утро в 10:00 МСК вы получите расписание на день.\n"
-        "За 15 минут до занятия придёт напоминание.",
-        InlineKeyboardMarkup(keyboard),
-    )
+    if key == 'reminders':
+        replan_reminders_for_user(context.job_queue, update.effective_user.id)
+    await query.answer(f"{label}: {'вкл' if new_value else 'выкл'}")
+    await _render_menu(update, context)
 
 
 # ---------------------------------------------------------------------------
-# Шаг 1: выбор группы
+# Выбор группы: notify_setup → notify_stream_<id> → обратно в меню
 # ---------------------------------------------------------------------------
 
-async def notify_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = update.effective_user.id
-    if not auth_service.is_user_verified(user_id):
-        await _edit_or_send(query, "🔐 Сначала авторизуйтесь.")
-        return
-
+async def _show_group_picker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
         streams = get_streams(db)
-        if not streams:
-            await _edit_or_send(query, "❌ Группы не найдены в БД.")
-            return
-
-        keyboard = [
-            [InlineKeyboardButton(s.name, callback_data=f"notify_stream_{s.id}")]
-            for s in streams
-        ]
-        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="notify_menu")])
-
-        await _edit_or_send(
-            query,
-            "Выберите вашу группу:",
-            InlineKeyboardMarkup(keyboard),
-        )
     finally:
         db.close()
+    if not streams:
+        await show_screen(update, context, "❌ Группы не найдены в БД.")
+        return
+    keyboard = [[InlineKeyboardButton(s.name, callback_data=f"notify_stream_{s.id}")] for s in streams]
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="notify_menu")])
+    await show_screen(update, context, "👥 Выберите вашу группу:",
+                      reply_markup=InlineKeyboardMarkup(keyboard))
 
 
-# ---------------------------------------------------------------------------
-# Шаг 2: подписка
-# ---------------------------------------------------------------------------
+async def notify_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    if await _require_auth(update, context):
+        await _show_group_picker(update, context)
+
 
 async def notify_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-
-    user_id = update.effective_user.id
-    stream_id = int(query.data.split("_")[-1])  # notify_stream_<id>
+    if not auth_service.is_user_verified(update.effective_user.id):
+        await query.answer()
+        return
+    stream_id = int(query.data.rsplit("_", 1)[-1])  # notify_stream_<id>
+    pending = context.user_data.pop(PENDING_KEY, None)
 
     db = SessionLocal()
     try:
-        user = _get_user(db, user_id)
+        user = _get_user(db, update.effective_user.id)
         if not user:
-            await _edit_or_send(query, "❌ Пользователь не найден. Авторизуйтесь заново.")
+            await query.answer()
+            await show_screen(update, context, "❌ Пользователь не найден. Авторизуйтесь заново.")
             return
-
         user.stream_id = stream_id
-        user.notifications_enabled = True
+        if pending in TOGGLES:
+            setattr(user, TOGGLES[pending][0], True)
         user.updated_at = datetime.now()
         db.commit()
         db.refresh(user)
@@ -128,40 +166,10 @@ async def notify_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
-    keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
-    await _edit_or_send(
-        query,
-        f"✅ Готово! Уведомления включены.\n"
-        f"Группа: {stream_name}\n\n"
-        "Каждое утро в 10:00 МСК придёт расписание на день,\n"
-        "а за 15 минут до занятия — напоминание.",
-        InlineKeyboardMarkup(keyboard),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Отписка
-# ---------------------------------------------------------------------------
-
-async def notify_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = update.effective_user.id
-
-    db = SessionLocal()
-    try:
-        user = _get_user(db, user_id)
-        if user:
-            user.notifications_enabled = False
-            user.updated_at = datetime.now()
-            db.commit()
-    finally:
-        db.close()
-
-    keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
-    await _edit_or_send(
-        query,
-        "🔕 Уведомления отключены.",
-        InlineKeyboardMarkup(keyboard),
-    )
+    # Группа влияет на напоминания, уже поставленные на сегодня
+    replan_reminders_for_user(context.job_queue, update.effective_user.id)
+    toast = f"Группа: {stream_name}"
+    if pending in TOGGLES:
+        toast += f" · {TOGGLES[pending][1]}: вкл"
+    await query.answer(toast)
+    await _render_menu(update, context)
