@@ -152,7 +152,7 @@ def _format_due(d: Deadline) -> str:
 
 
 def format_deadline_line(d: Deadline, now: datetime) -> str:
-    parts = [escape(d.title), _format_due(d)]
+    parts = [escape(d.title), f"<b>{_format_due(d)}</b>"]
     if d.kind == 'milestone':
         parts.reverse()  # у этапов ВКР длинные названия — дата впереди
     base = " · ".join(filter(None, parts))
@@ -160,9 +160,8 @@ def format_deadline_line(d: Deadline, now: datetime) -> str:
         return f"<s>{base}</s>"
     left = days_left(d, now.date())
     remain = "сегодня" if left == 0 else f"осталось {left} дн"
-    if left < URGENT_DAYS:
-        return f"❗ {base} · <b>{remain}</b>"
-    return f"{base} · {remain}"
+    line = f"{base} · <i>{remain}</i>"
+    return f"❗ {line}" if left < URGENT_DAYS else line
 
 
 def _render_block(deadlines: list, now: datetime) -> list:

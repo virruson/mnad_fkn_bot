@@ -40,8 +40,8 @@ PMO_DEADLINES = [
 def test_card_matches_mockup():
     assert render_subject_card(PMO, PMO_DEADLINES, NOW) == (
         "<b>Продвинутое машинное обучение</b>\n\n"
-        "📝 <b>ДЗ</b>\n<s>№1 · 18.09</s>\n❗ №2 · 01.10 · <b>осталось 1 дн</b>\n№3 · 15.10 · осталось 15 дн\n\n"
-        "🧠 <b>Квизы/КР</b>\n<s>№1 · 23.09</s>\n❗ №2 · 30.09, 18:00 · <b>сегодня</b>\n№3 · 07.10 · осталось 7 дн\n\n"
+        "📝 <b>ДЗ</b>\n<s>№1 · <b>18.09</b></s>\n❗ №2 · <b>01.10</b> · <i>осталось 1 дн</i>\n№3 · <b>15.10</b> · <i>осталось 15 дн</i>\n\n"
+        "🧠 <b>Квизы/КР</b>\n<s>№1 · <b>23.09</b></s>\n❗ №2 · <b>30.09, 18:00</b> · <i>сегодня</i>\n№3 · <b>07.10</b> · <i>осталось 7 дн</i>\n\n"
         "🎓 <b>Экзамен</b>\n<i>нет информации</i>\n\n"
         "🧮 <b>Формула</b>\n<code>Итог = 0.3·ДЗ + 0.2·Квизы + 0.5·КР</code>"
     )
@@ -50,14 +50,14 @@ def test_card_matches_mockup():
 def test_card_hides_old_past_and_empty_subject():
     hws = [dl(DB, 'hw', f"№{i}", (9, i)) for i in range(1, 7)] + [dl(DB, 'hw', '№7', (10, 20))]
     card = render_subject_card(DB, hws, NOW)
-    assert "№3 · 03.09" not in card and "<s>№4 · 04.09</s>" in card
+    assert "№3 · <b>03.09</b>" not in card and "<s>№4 · <b>04.09</b></s>" in card
     assert "<i>ещё 3 прошедших</i>" in card
     assert render_subject_card(RL, [], NOW) == "<b>Обучение с подкреплением</b>\n\n<i>нет информации</i>"
 
 
 def test_card_past_after_due_time():
     card = render_subject_card(PMO, PMO_DEADLINES, datetime(2026, 9, 30, 18, 1))
-    assert "<s>№2 · 30.09, 18:00</s>" in card
+    assert "<s>№2 · <b>30.09, 18:00</b></s>" in card
 
 
 def test_subject_buttons_order():
@@ -76,7 +76,7 @@ def test_display_name():
 def test_milestone_only_card():
     vkr = subj(5, "ВКР", "📜 ВКР")
     card = render_subject_card(vkr, [dl(vkr, 'milestone', 'Защита ВКР', (10, 20))], NOW)
-    assert card == "<b>ВКР</b>\n\n📌 <b>Этапы</b>\n20.10 · Защита ВКР · осталось 20 дн"
+    assert card == "<b>ВКР</b>\n\n📌 <b>Этапы</b>\n<b>20.10</b> · Защита ВКР · <i>осталось 20 дн</i>"
     assert render_deadline_digest([dl(vkr, 'milestone', 'Защита ВКР', (10, 1))], NOW.date()).endswith(
         "📜 ВКР — Защита ВКР")
 
