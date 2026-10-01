@@ -76,7 +76,7 @@ def test_display_name():
 def test_milestone_only_card():
     vkr = subj(5, "ВКР", "📜 ВКР")
     card = render_subject_card(vkr, [dl(vkr, 'milestone', 'Защита ВКР', (10, 20))], NOW)
-    assert card == "<b>ВКР</b>\n\n📌 <b>Этапы</b>\nЗащита ВКР · 20.10 · осталось 20 дн"
+    assert card == "<b>ВКР</b>\n\n📌 <b>Этапы</b>\n20.10 · Защита ВКР · осталось 20 дн"
     assert render_deadline_digest([dl(vkr, 'milestone', 'Защита ВКР', (10, 1))], NOW.date()).endswith(
         "📜 ВКР — Защита ВКР")
 

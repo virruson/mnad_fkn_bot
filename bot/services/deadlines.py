@@ -152,7 +152,10 @@ def _format_due(d: Deadline) -> str:
 
 
 def format_deadline_line(d: Deadline, now: datetime) -> str:
-    base = " · ".join(filter(None, [escape(d.title), _format_due(d)]))
+    parts = [escape(d.title), _format_due(d)]
+    if d.kind == 'milestone':
+        parts.reverse()  # у этапов ВКР длинные названия — дата впереди
+    base = " · ".join(filter(None, parts))
     if is_past(d, now):
         return f"<s>{base}</s>"
     left = days_left(d, now.date())
