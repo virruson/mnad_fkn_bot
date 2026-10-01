@@ -20,7 +20,7 @@
       "deadlines": [{"subject": "Продвинутое машинное обучение", "type": "ДЗ",
                      "title": "№1", "date": "03.10.2026", "time": "18:00"}]
     }
-type — ДЗ / Квиз / КВИЗ/КР / КР. Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, time можно не
+type — ДЗ / Квиз / КВИЗ/КР / КР / Экзамен (у экзамена title можно не писать). Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, time можно не
 указывать (= 23:59). Предмет ищется по точному названию из расписания; не найден —
 WARNING, запись пропускается.
 
@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from bot.utils.database import SessionLocal
 from bot.models import Subject, Deadline, Module
 
-KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test'}
+KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test', 'экзамен': 'exam', 'экз': 'exam'}
 TAB_DEADLINES, TAB_FORMULAS, TAB_MODULES = "Дедлайны", "Формулы", "Модули"
 DEFAULT_CREDENTIALS = Path(__file__).resolve().parent / "credentials.json"
 DEFAULT_JSON = Path(__file__).resolve().parent / "deadlines.json"
@@ -189,7 +189,7 @@ class Importer:
             if kind is None:
                 self._warn(where, f"тип «{kind_raw}» — ожидается ДЗ, Квиз, КВИЗ/КР или КР")
                 continue
-            if not title:
+            if not title and kind != 'exam':   # у экзамена название необязательно
                 self._warn(where, "нет названия")
                 continue
             try:

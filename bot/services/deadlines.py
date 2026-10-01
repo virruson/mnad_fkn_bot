@@ -26,8 +26,10 @@ KIND_BLOCKS = (          # порядок блоков в карточке
     ('hw', '📝', 'ДЗ'),
     ('quiz', '🧠', 'Квизы/КР'),   # в таблице курса квизы и КР в одной колонке
     ('test', '📋', 'КР'),
+    ('exam', '🎓', 'Экзамен'),
 )
-KIND_IN_DIGEST = {'hw': 'ДЗ', 'quiz': 'квиз/КР', 'test': 'КР'}
+KIND_IN_DIGEST = {'hw': 'ДЗ', 'quiz': 'квиз/КР', 'test': 'КР', 'exam': 'экзамен'}
+OPTIONAL_KINDS = {'test', 'exam'}  # блок показываем, только если в нём что-то есть
 
 
 def now_msk() -> datetime:
@@ -138,7 +140,7 @@ def _format_due(d: Deadline) -> str:
 
 
 def format_deadline_line(d: Deadline, now: datetime) -> str:
-    base = f"{escape(d.title)} · {_format_due(d)}"
+    base = " · ".join(filter(None, [escape(d.title), _format_due(d)]))
     if is_past(d, now):
         return f"<s>{base}</s>"
     left = days_left(d, now.date())
@@ -171,6 +173,8 @@ def render_subject_card(subject: Subject, deadlines: list, now: datetime) -> str
 
     parts = [title]
     for kind, icon, label in KIND_BLOCKS:
+        if kind in OPTIONAL_KINDS and not by_kind[kind]:
+            continue
         parts.append("\n".join([f"{icon} <b>{label}</b>", *_render_block(by_kind[kind], now)]))
 
     formula = (f"<code>Итог = {escape(subject.grading_formula.strip())}</code>"
@@ -206,7 +210,7 @@ def render_deadline_digest(deadlines: list, today: date):
         day = today + timedelta(days=n)
         lines = [f"{titles[n]} · {WEEKDAYS[day.weekday()]} {day.strftime('%d.%m')}"]
         for d in sorted(groups[n], key=lambda x: (display_name(x.subject), due_at(x))):
-            lines.append(f"{escape(display_name(d.subject))} — "
-                         f"{KIND_IN_DIGEST[d.kind]} {escape(d.title)}")
+            what = " ".join(filter(None, [KIND_IN_DIGEST[d.kind], escape(d.title)]))
+            lines.append(f"{escape(display_name(d.subject))} — {what}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)

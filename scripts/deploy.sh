@@ -59,6 +59,9 @@ done
 
 if [ "$NEED_REBUILD" = "1" ]; then
     docker-compose build bot postgres-migrate
+elif git diff --name-only "$LOCAL" "$REMOTE" | grep -q "^bot/migrations/"; then
+    echo "📦 Новые миграции — пересобираю образ миграций"
+    docker-compose build postgres-migrate
 else
     echo "✅ requirements.txt и Dockerfile не менялись — ребилд не нужен (код обновлён через volume)"
 fi

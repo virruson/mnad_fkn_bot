@@ -169,11 +169,11 @@ class Deadline(Base):
     """Дедлайн по предмету, общий для всех групп."""
     __tablename__ = 'deadlines'
 
-    KINDS = ('hw', 'quiz', 'test')
+    KINDS = ('hw', 'quiz', 'test', 'exam')
 
     id = Column(Integer, primary_key=True)
     subject_id = Column(Integer, ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
-    kind = Column(String(10), nullable=False, comment='hw | quiz | test')
+    kind = Column(String(10), nullable=False, comment='hw | quiz | test | exam')
     title = Column(String(255), nullable=False)
     due_date = Column(Date, nullable=False)
     due_time = Column(Time, nullable=True, comment='NULL = 23:59')
