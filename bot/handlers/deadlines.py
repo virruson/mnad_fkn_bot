@@ -9,8 +9,7 @@ from bot.handlers.auth import auth_service
 from bot.models import Subject
 from bot.services.deadlines import (
     build_subject_buttons,
-    get_current_module,
-    get_module_subjects,
+    get_screen_subjects,
     get_subject_deadlines,
     now_msk,
     render_deadlines_screen,
@@ -37,8 +36,7 @@ async def show_deadlines(update: Update, context: ContextTypes.DEFAULT_TYPE, new
     now = now_msk()
     db = SessionLocal()
     try:
-        module = get_current_module(db, now.date())
-        subjects = get_module_subjects(db, module) if module else []
+        subjects = get_screen_subjects(db, now.date())
         deadlines = get_subject_deadlines(db, [s.id for s in subjects])
         buttons = build_subject_buttons(subjects, deadlines, now)
     finally:

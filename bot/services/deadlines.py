@@ -27,9 +27,10 @@ KIND_BLOCKS = (          # порядок блоков в карточке
     ('quiz', '🧠', 'Квизы/КР'),   # в таблице курса квизы и КР в одной колонке
     ('test', '📋', 'КР'),
     ('exam', '🎓', 'Экзамен'),
+    ('milestone', '📌', 'Этапы'),  # ВКР и прочие этапы без ДЗ/экзамена
 )
-KIND_IN_DIGEST = {'hw': 'ДЗ', 'quiz': 'квиз/КР', 'test': 'КР', 'exam': 'экзамен'}
-OPTIONAL_KINDS = {'test', 'exam'}  # блок показываем, только если в нём что-то есть
+KIND_IN_DIGEST = {'hw': 'ДЗ', 'quiz': 'квиз/КР', 'test': 'КР', 'exam': 'экзамен', 'milestone': ''}
+OPTIONAL_KINDS = {'test', 'milestone'}  # блок показываем, только если в нём что-то есть
 
 
 def now_msk() -> datetime:
@@ -58,12 +59,12 @@ def is_urgent(d: Deadline, now: datetime) -> bool:
 
 
 def display_name(subject: Subject) -> str:
-    """Имя для кнопок и утреннего сообщения: полное, short_name или обрезка по слову."""
+    """Имя для кнопок и утреннего сообщения: short_name, полное или обрезка по слову."""
+    if subject.short_name:
+        return subject.short_name.strip()
     name = subject.name.strip()
     if len(name) <= NAME_LIMIT:
         return name
-    if subject.short_name:
-        return subject.short_name.strip()
     cut = name[:NAME_LIMIT - 1]
     if name[NAME_LIMIT - 1] != ' ' and ' ' in cut:
         cut = cut[:cut.rfind(' ')]
@@ -89,6 +90,17 @@ def get_module_subjects(db, module: Module) -> list:
                            LessonType.name.notin_(NOT_A_SUBJECT))
                    .distinct())
     return db.query(Subject).filter(Subject.id.in_(subject_ids)).all()
+
+
+def get_screen_subjects(db, today: date) -> list:
+    """Предметы экрана «Дедлайны»: текущий модуль + всё, где есть будущие дедлайны (ВКР и т.п.)."""
+    module = get_current_module(db, today)
+    subjects = {s.id: s for s in (get_module_subjects(db, module) if module else [])}
+    with_upcoming = (db.query(Subject).join(Deadline, Deadline.subject_id == Subject.id)
+                     .filter(Deadline.due_date >= today).distinct().all())
+    for s in with_upcoming:
+        subjects.setdefault(s.id, s)
+    return list(subjects.values())
 
 
 def get_subject_deadlines(db, subject_ids) -> dict:
@@ -171,15 +183,19 @@ def render_subject_card(subject: Subject, deadlines: list, now: datetime) -> str
     for d in sorted(deadlines, key=due_at):
         by_kind[d.kind].append(d)
 
+    only_milestones = bool(deadlines) and set(by_kind) == {'milestone'}
     parts = [title]
     for kind, icon, label in KIND_BLOCKS:
         if kind in OPTIONAL_KINDS and not by_kind[kind]:
             continue
+        if only_milestones and kind != 'milestone':
+            continue  # у ВКР нет ДЗ/квизов/экзамена — пустые блоки не нужны
         parts.append("\n".join([f"{icon} <b>{label}</b>", *_render_block(by_kind[kind], now)]))
 
-    formula = (f"<code>Итог = {escape(subject.grading_formula.strip())}</code>"
-               if subject.grading_formula else NO_INFO)
-    parts.append(f"🧮 <b>Формула</b>\n{formula}")
+    if subject.grading_formula or not only_milestones:
+        formula = (f"<code>Итог = {escape(subject.grading_formula.strip())}</code>"
+                   if subject.grading_formula else NO_INFO)
+        parts.append(f"🧮 <b>Формула</b>\n{formula}")
     return "\n\n".join(parts)
 
 

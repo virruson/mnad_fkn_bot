@@ -42,6 +42,7 @@ def test_card_matches_mockup():
         "<b>Продвинутое машинное обучение</b>\n\n"
         "📝 <b>ДЗ</b>\n<s>№1 · 18.09</s>\n❗ №2 · 01.10 · <b>осталось 1 дн</b>\n№3 · 15.10 · осталось 15 дн\n\n"
         "🧠 <b>Квизы/КР</b>\n<s>№1 · 23.09</s>\n❗ №2 · 30.09, 18:00 · <b>сегодня</b>\n№3 · 07.10 · осталось 7 дн\n\n"
+        "🎓 <b>Экзамен</b>\n<i>нет информации</i>\n\n"
         "🧮 <b>Формула</b>\n<code>Итог = 0.3·ДЗ + 0.2·Квизы + 0.5·КР</code>"
     )
 
@@ -70,6 +71,14 @@ def test_display_name():
     assert display_name(DB) == "Базы и хранилища данных"
     assert display_name(PMO) == "Продвинутое МО"
     assert display_name(subj(9, "Глубинное обучение и нейронные сети")) == "Глубинное обучение и…"
+
+
+def test_milestone_only_card():
+    vkr = subj(5, "ВКР", "📜 ВКР")
+    card = render_subject_card(vkr, [dl(vkr, 'milestone', 'Защита ВКР', (10, 20))], NOW)
+    assert card == "<b>ВКР</b>\n\n📌 <b>Этапы</b>\nЗащита ВКР · 20.10 · осталось 20 дн"
+    assert render_deadline_digest([dl(vkr, 'milestone', 'Защита ВКР', (10, 1))], NOW.date()).endswith(
+        "📜 ВКР — Защита ВКР")
 
 
 def test_digest_only_4_2_1_days():

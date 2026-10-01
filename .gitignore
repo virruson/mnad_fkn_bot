@@ -31,3 +31,5 @@ ENV/
 
 # local files
 .DS_Store
+# Claude
+Claude outputs/

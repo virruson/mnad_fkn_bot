@@ -20,9 +20,10 @@
       "deadlines": [{"subject": "Продвинутое машинное обучение", "type": "ДЗ",
                      "title": "№1", "date": "03.10.2026", "time": "18:00"}]
     }
-type — ДЗ / Квиз / КВИЗ/КР / КР / Экзамен (у экзамена title можно не писать). Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, time можно не
+type — ДЗ / Квиз / КВИЗ/КР / КР / Экзамен / Этап (у экзамена title можно не писать). Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, time можно не
 указывать (= 23:59). Предмет ищется по точному названию из расписания; не найден —
-WARNING, запись пропускается.
+WARNING, запись пропускается. Предмета нет в расписании (ВКР) — в "subjects"
+указать "create": true, тогда он будет создан.
 
 Скрипт:
   - upsert дедлайнов по ключу предмет + тип + название (меняются дата и время)
@@ -42,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from bot.utils.database import SessionLocal
 from bot.models import Subject, Deadline, Module
 
-KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test', 'экзамен': 'exam', 'экз': 'exam'}
+KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test', 'экзамен': 'exam', 'экз': 'exam', 'этап': 'milestone'}
 TAB_DEADLINES, TAB_FORMULAS, TAB_MODULES = "Дедлайны", "Формулы", "Модули"
 DEFAULT_CREDENTIALS = Path(__file__).resolve().parent / "credentials.json"
 DEFAULT_JSON = Path(__file__).resolve().parent / "deadlines.json"
@@ -68,7 +69,8 @@ def fetch_json(path):
     return {
         TAB_MODULES: [[m.get('name') or '', m.get('start') or '', m.get('end') or '']
                       for m in data.get('modules', [])],
-        TAB_FORMULAS: [[s.get('name') or '', s.get('formula') or '', s.get('short_name') or '']
+        TAB_FORMULAS: [[s.get('name') or '', s.get('formula') or '', s.get('short_name') or '',
+                        'create' if s.get('create') else '']
                        for s in data.get('subjects', [])],
         TAB_DEADLINES: [[d.get('subject') or '', d.get('type') or '', d.get('title') or '',
                          d.get('date') or '', d.get('time') or '']
@@ -161,9 +163,14 @@ class Importer:
 
     def import_formulas(self, rows):
         for i, row in enumerate(rows, start=2):
-            name, formula, short_name = cells(row, 3)
+            name, formula, short_name, create = cells(row, 4)
             if not name:
                 continue
+            if create and name not in self.subjects:   # предмет не из расписания (ВКР)
+                self.subjects[name] = Subject(name=name)
+                self.session.add(self.subjects[name])
+                self.session.flush()
+                self._record('created', f"предмет {name}")
             subject = self._subject(f"{TAB_FORMULAS}!{i}", name)
             if subject is None:
                 continue
