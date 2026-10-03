@@ -42,13 +42,14 @@ git commit -am "Дедлайны" && git push
 - предмета нет в расписании (ВКР) — в `subjects` добавить `"create": true`
 - `short_name` с эмодзи (`📜 ВКР`) — так предмет помечается на кнопке и в рассылке
 - `time` можно не писать → 23:59
-- импорт только добавляет и обновляет, ничего не удаляет
+- импорт добавляет и обновляет; с `--prune` (так запускает deploy.sh) ещё удаляет дедлайны, которых нет в json. При любом WARNING удаление пропускается
 
 ## Вручную на сервере
 
 ```bash
 docker-compose exec bot python -m scripts.import_deadlines --dry-run   # что загрузится
 docker-compose exec bot python -m scripts.import_deadlines             # загрузить
+docker-compose exec bot python -m scripts.import_deadlines --prune     # + удалить то, чего нет в json
 docker-compose exec postgres psql -U mnad_bot -d mnad_schedule -c "select version_num from alembic_version"   # версия БД
 docker-compose run --rm postgres-migrate alembic downgrade -1          # откат миграции
 ```

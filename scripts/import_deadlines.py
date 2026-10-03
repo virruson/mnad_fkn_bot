@@ -8,6 +8,7 @@
 Использование:
     python -m scripts.import_deadlines --dry-run        # показать, что будет загружено
     python -m scripts.import_deadlines                  # загрузить scripts/deadlines.json
+    python -m scripts.import_deadlines --prune          # + удалить дедлайны, которых нет в json
     python -m scripts.import_deadlines --json other.json
     python -m scripts.import_deadlines --sheet-id <ID>  # то же из Google Sheet (вкладки
         «Дедлайны», «Формулы», «Модули»; ключ — --credentials или GOOGLE_CREDENTIALS)
@@ -28,7 +29,8 @@ WARNING, запись пропускается. Предмета нет в ра�
 Скрипт:
   - upsert дедлайнов по ключу предмет + тип + название (меняются дата и время)
   - upsert формул и коротких названий предметов, модулей по названию
-  - НЕ удаляет ничего из БД
+  - НЕ удаляет ничего из БД, кроме режима --prune: тогда дедлайны, которых нет
+    в источнике, удаляются (если в дедлайнах нет WARNING)
 """
 import argparse
 import json
@@ -108,13 +110,15 @@ class Importer:
     def __init__(self, session):
         self.session = session
         self.subjects = {s.name.strip(): s for s in session.query(Subject).all()}
-        self.stats = {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0}
+        self.stats = {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0, 'deleted': 0}
+        self.seen_deadline_ids = set()
+        self.deadline_warnings = 0
         self.log = []
 
     def _record(self, action, text):
         self.stats[action] += 1
         if action != 'unchanged':
-            mark = {'created': '+', 'updated': '~', 'skipped': 'WARNING'}[action]
+            mark = {'created': '+', 'updated': '~', 'skipped': 'WARNING', 'deleted': '-'}[action]
             self.log.append(f"  {mark} {text}")
 
     def _warn(self, where, message):
@@ -184,6 +188,21 @@ class Importer:
                 self._record('unchanged', name)
 
     def import_deadlines(self, rows):
+        skipped_before = self.stats['skipped']
+        self._import_deadline_rows(rows)
+        self.deadline_warnings = self.stats['skipped'] - skipped_before
+
+    def prune_deadlines(self):
+        """Удаляет дедлайны, которых больше нет в источнике (переименованные, отменённые)."""
+        if self.deadline_warnings:
+            print("  удаление пропущено: в дедлайнах есть WARNING — сначала исправьте их")
+            return
+        stale = self.session.query(Deadline).filter(Deadline.id.notin_(self.seen_deadline_ids)).all()
+        for d in stale:
+            self._record('deleted', f"{d.subject.name} · {d.kind} {d.title} · {d.due_date:%d.%m.%Y}")
+            self.session.delete(d)
+
+    def _import_deadline_rows(self, rows):
         for i, row in enumerate(rows, start=2):
             name, kind_raw, title, date_raw, time_raw = cells(row, 5)
             if not any((name, kind_raw, title, date_raw)):
@@ -209,17 +228,19 @@ class Importer:
             deadline = self.session.query(Deadline).filter_by(
                 subject_id=subject.id, kind=kind, title=title).first()
             if deadline is None:
-                self.session.add(Deadline(subject_id=subject.id, kind=kind, title=title,
-                                          due_date=due_date, due_time=due_time))
+                deadline = Deadline(subject_id=subject.id, kind=kind, title=title,
+                                    due_date=due_date, due_time=due_time)
+                self.session.add(deadline)
                 self._record('created', label)
             elif changes := self._apply(deadline, {'due_date': due_date, 'due_time': due_time}):
                 self._record('updated', f"{label} ({'; '.join(changes)})")
             else:
                 self._record('unchanged', label)
             self.session.flush()  # чтобы повтор той же строки ниже нашёл уже добавленную запись
+            self.seen_deadline_ids.add(deadline.id)
 
 
-def run(tabs, dry_run=False):
+def run(tabs, dry_run=False, prune=False):
     session = SessionLocal()
     importer = Importer(session)
     try:
@@ -234,6 +255,12 @@ def run(tabs, dry_run=False):
             method(rows)
             print(f"[{title}] строк: {len(rows)}")
             print("\n".join(importer.log[before:]) or "  без изменений")
+
+        if prune and tabs.get(TAB_DEADLINES) is not None:
+            before = len(importer.log)
+            print("[Удаление] дедлайны, которых нет в источнике")
+            importer.prune_deadlines()
+            print("\n".join(importer.log[before:]) or "  нечего удалять")
 
         if dry_run:
             session.rollback()
@@ -255,6 +282,8 @@ def main():
     parser.add_argument('--credentials', default=os.getenv('GOOGLE_CREDENTIALS', str(DEFAULT_CREDENTIALS)),
                         help="JSON-ключ сервисного аккаунта Google")
     parser.add_argument('--dry-run', action='store_true', help="не сохранять изменения в БД")
+    parser.add_argument('--prune', action='store_true',
+                        help="удалить из БД дедлайны, которых нет в источнике (переименованные/отменённые)")
     args = parser.parse_args()
 
     if args.sheet_id:
@@ -263,8 +292,8 @@ def main():
         print(f"Источник: {args.json}")
         tabs = fetch_json(args.json)
 
-    stats = run(tabs, dry_run=args.dry_run)
-    print(f"Создано: {stats['created']}, обновлено: {stats['updated']}, "
+    stats = run(tabs, dry_run=args.dry_run, prune=args.prune)
+    print(f"Создано: {stats['created']}, обновлено: {stats['updated']}, удалено: {stats['deleted']}, "
           f"без изменений: {stats['unchanged']}, пропущено: {stats['skipped']}")
 
 if __name__ == '__main__':

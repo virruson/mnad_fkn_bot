@@ -76,7 +76,7 @@ docker-compose run --rm postgres-migrate
 if git diff --name-only "$LOCAL" "$REMOTE" | grep -q "^scripts/deadlines.json$"; then
     echo ""
     echo "=== Дедлайны: scripts/deadlines.json изменён — импорт ==="
-    docker-compose exec -T bot python -m scripts.import_deadlines
+    docker-compose exec -T bot python -m scripts.import_deadlines --prune
 fi
 
 echo ""
