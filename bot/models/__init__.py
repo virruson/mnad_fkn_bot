@@ -144,7 +144,7 @@ class User(Base):
     digest_enabled = Column(Boolean, default=False, nullable=False, comment='Расписание на день в 10:00')
     reminders_enabled = Column(Boolean, default=False, nullable=False, comment='Напоминание за 15 мин')
     deadlines_enabled = Column(Boolean, default=False, nullable=False, comment='Дедлайны за 4, 2, 1 дн')
-    news_enabled = Column(Boolean, default=False, nullable=False, comment='Новости бота (📣 Новое в боте)')
+    news_enabled = Column(Boolean, default=True, nullable=False, comment='Новости бота (📣 Новое в боте), вкл по умолчанию')
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
