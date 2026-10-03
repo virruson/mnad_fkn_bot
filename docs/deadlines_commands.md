@@ -68,3 +68,12 @@ async def main():
 asyncio.run(main())
 PY
 ```
+
+## Объявление «📣 Новое в боте»
+
+Уходит только тем, у кого включены «Новости бота». `\n` — перенос строки, жирным одно слово, без эмодзи.
+```bash
+docker-compose exec bot python -m scripts.announce --text "В разделе «Дедлайны» появилась <b>ВКР</b>:\nвсе этапы и сроки в одном месте." --button deadlines --dry-run
+docker-compose exec bot python -m scripts.announce --text "..." --button deadlines   # отправить
+```
+`--button` необязателен: `deadlines` / `schedule` / `notify`.

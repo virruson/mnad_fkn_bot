@@ -247,7 +247,7 @@ async def send_deadline_digest(bot, today) -> int:
         db.close()
 
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⏳ Все дедлайны", callback_data="deadlines_open")
+        InlineKeyboardButton("⏳ Открыть дедлайны", callback_data="deadlines_open")
     ]])
     sent = 0
     for chat_id in chat_ids:

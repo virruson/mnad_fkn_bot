@@ -123,14 +123,18 @@ def get_subject_deadlines(db, subject_ids) -> dict:
 def build_subject_buttons(subjects, deadlines_by_subject: dict, now: datetime) -> list:
     """
     [(subject_id, текст_кнопки), ...] в порядке: срочные, дальше по ближайшему
-    дедлайну, предметы без будущих дедлайнов — в конце.
+    дедлайну, предметы без будущих дедлайнов — в конце. ВКР (только этапы) всегда
+    последняя: «❗» получает, но место не меняет.
     """
     items = []
     for s in subjects:
-        upcoming = [d for d in deadlines_by_subject.get(s.id, []) if not is_past(d, now)]
+        own = deadlines_by_subject.get(s.id, [])
+        pinned_last = bool(own) and all(d.kind == 'milestone' for d in own)
+        upcoming = [d for d in own if not is_past(d, now)]
         nearest = min((due_at(d) for d in upcoming), default=None)
         urgent = any(is_urgent(d, now) for d in upcoming)
-        items.append((not urgent, nearest is None, nearest or datetime.max, display_name(s), s.id, urgent))
+        items.append((pinned_last, not urgent, nearest is None, nearest or datetime.max,
+                      display_name(s), s.id, urgent))
     items.sort()
     return [(sid, f"❗ {name}" if urgent else name) for *_, name, sid, urgent in items]
 
@@ -178,8 +182,11 @@ def _render_block(deadlines: list, now: datetime) -> list:
 
 def render_subject_card(subject: Subject, deadlines: list, now: datetime) -> str:
     title = f"<b>{escape(subject.name)}</b>"
-    if not deadlines and not subject.grading_formula:
-        return f"{title}\n\n{NO_INFO}"
+    if not deadlines:  # все блоки пусты — одна строка (+ формула, если есть)
+        parts = [title, NO_INFO]
+        if subject.grading_formula:
+            parts.append(_render_formula(subject))
+        return "\n\n".join(parts)
 
     by_kind = defaultdict(list)
     for d in sorted(deadlines, key=due_at):
@@ -195,10 +202,23 @@ def render_subject_card(subject: Subject, deadlines: list, now: datetime) -> str
         parts.append("\n".join([f"{icon} <b>{label}</b>", *_render_block(by_kind[kind], now)]))
 
     if subject.grading_formula or not only_milestones:
-        formula = (f"<code>Итог = {escape(subject.grading_formula.strip())}</code>"
-                   if subject.grading_formula else NO_INFO)
-        parts.append(f"🧮 <b>Формула</b>\n{formula}")
+        parts.append(_render_formula(subject))
     return "\n\n".join(parts)
+
+
+def _render_formula(subject: Subject) -> str:
+    formula = (f"<code>Итог = {escape(subject.grading_formula.strip())}</code>"
+               if subject.grading_formula else NO_INFO)
+    return f"🧮 <b>Формула</b>\n{formula}"
+
+
+def _digest_title(d: Deadline) -> str:
+    """Этап ВКР в рассылке — со строчной буквы («ВКР — выбор …»), аббревиатуры не трогаем."""
+    title = d.title.strip()
+    first_word = title.split(' ', 1)[0]
+    if d.kind == 'milestone' and title and not first_word.isupper():
+        title = title[0].lower() + title[1:]
+    return title
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +248,7 @@ def render_deadline_digest(deadlines: list, today: date):
         day = today + timedelta(days=n)
         lines = [f"{titles[n]} · {WEEKDAYS[day.weekday()]} {day.strftime('%d.%m')}"]
         for d in sorted(groups[n], key=lambda x: (display_name(x.subject), due_at(x))):
-            what = " ".join(filter(None, [KIND_IN_DIGEST[d.kind], escape(d.title)]))
+            what = " ".join(filter(None, [KIND_IN_DIGEST[d.kind], escape(_digest_title(d))]))
             lines.append(f"{escape(display_name(d.subject))} — {what}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)

@@ -11,7 +11,7 @@ from bot.handlers.commands import start, help_command, button_callback
 from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages
 from bot.handlers.notifications import notify_menu, notify_setup, notify_subscribe, notify_toggle
-from bot.handlers.deadlines import show_deadlines, show_subject_card, open_deadlines_from_digest
+from bot.handlers.deadlines import show_deadlines, show_subject_card, open_deadlines_from_digest, open_section
 from bot.services.scheduler import setup_scheduler
 
 # Импортируем обработчики расписания
@@ -110,6 +110,7 @@ def main():
     application.add_handler(CallbackQueryHandler(show_deadlines,             pattern="^deadlines$"))
     application.add_handler(CallbackQueryHandler(show_subject_card,          pattern="^deadlines_subj_\\d+$"))
     application.add_handler(CallbackQueryHandler(open_deadlines_from_digest, pattern="^deadlines_open$"))
+    application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify)$"))
     # универсальный — последним
     application.add_handler(CallbackQueryHandler(button_callback))
 

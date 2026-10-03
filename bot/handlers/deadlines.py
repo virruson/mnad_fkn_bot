@@ -51,9 +51,28 @@ async def show_deadlines(update: Update, context: ContextTypes.DEFAULT_TYPE, new
 
 
 async def open_deadlines_from_digest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Кнопка «⏳ Все дедлайны» под утренним сообщением: само сообщение оставляем в чате."""
+    """Кнопка «⏳ Открыть дедлайны» под утренним сообщением: само сообщение оставляем в чате."""
     await update.callback_query.edit_message_reply_markup(reply_markup=None)
     await show_deadlines(update, context, new_message=True)
+
+
+async def open_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Кнопка «Открыть …» под объявлением 📣: объявление остаётся, раздел открывается новым экраном."""
+    from bot.handlers.notifications import notify_menu
+    from bot.handlers.schedule import show_schedule
+    from bot.utils.ui import FORCE_NEW_KEY
+
+    query = update.callback_query
+    section = query.data.removeprefix("open_")
+    await query.edit_message_reply_markup(reply_markup=None)
+    context.chat_data[FORCE_NEW_KEY] = True
+    if section == "deadlines":
+        await show_deadlines(update, context)
+    elif section == "notify":
+        await notify_menu(update, context)
+    else:  # schedule
+        await query.answer()
+        await show_schedule(update, context)
 
 
 async def show_subject_card(update: Update, context: ContextTypes.DEFAULT_TYPE):

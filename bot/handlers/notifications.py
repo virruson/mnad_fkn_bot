@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 
 # ключ callback → (поле User, подпись кнопки, нужна ли группа)
 TOGGLES = {
-    'digest':    ('digest_enabled',    "Расписание на день", True),
-    'reminders': ('reminders_enabled', "За 15 мин до пары",  True),
-    'deadlines': ('deadlines_enabled', "Дедлайны",           False),
+    'digest':    ('digest_enabled',    "Расписание на день · 10:00", True),
+    'reminders': ('reminders_enabled', "Напоминание за 15 мин",      True),
+    'deadlines': ('deadlines_enabled', "Дедлайны · за 4, 2, 1 дн",   False),
+    'news':      ('news_enabled',      "Новости бота",               False),
 }
 PENDING_KEY = "notify_pending_toggle"
 
@@ -42,7 +43,7 @@ def _status_line(user) -> str:
     enabled = sum(getattr(user, field) for field, _, _ in TOGGLES.values())
     if not enabled:
         return "🔕 Все уведомления выключены"
-    return f"Включено {enabled} из {len(TOGGLES)} · утром в 10:00 МСК"
+    return f"Включено {enabled} из {len(TOGGLES)}"
 
 
 async def _render_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):

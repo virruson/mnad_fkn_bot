@@ -67,6 +67,22 @@ def test_subject_buttons_order():
         "❗ Продвинутое МО", "Временные ряды", "Базы и хранилища данных", "Обучение с подкреплением"]
 
 
+def test_vkr_button_always_last():
+    vkr = subj(5, "ВКР", "📜 ВКР")
+    deadlines = {1: PMO_DEADLINES, 5: [dl(vkr, 'milestone', 'Выбор руководителя', (10, 1))],
+                 2: [dl(TS, 'hw', '№2', (10, 4))]}
+    buttons = build_subject_buttons([vkr, TS, PMO, RL], deadlines, NOW)
+    assert [text for _, text in buttons] == [
+        "❗ Продвинутое МО", "Временные ряды", "Обучение с подкреплением", "❗ 📜 ВКР"]
+
+
+def test_empty_card_keeps_formula():
+    dl_subj = subj(9, "Глубинное обучение и нейронные сети", formula="0.6·ДЗ + 0.4·ЭКЗ")
+    assert render_subject_card(dl_subj, [], NOW) == (
+        "<b>Глубинное обучение и нейронные сети</b>\n\n<i>нет информации</i>\n\n"
+        "🧮 <b>Формула</b>\n<code>Итог = 0.6·ДЗ + 0.4·ЭКЗ</code>")
+
+
 def test_display_name():
     assert display_name(DB) == "Базы и хранилища данных"
     assert display_name(PMO) == "Продвинутое МО"
@@ -78,7 +94,7 @@ def test_milestone_only_card():
     card = render_subject_card(vkr, [dl(vkr, 'milestone', 'Защита ВКР', (10, 20))], NOW)
     assert card == "<b>ВКР</b>\n\n📌 <b>Этапы</b>\n<b>20.10</b> · Защита ВКР · <i>осталось 20 дн</i>"
     assert render_deadline_digest([dl(vkr, 'milestone', 'Защита ВКР', (10, 1))], NOW.date()).endswith(
-        "📜 ВКР — Защита ВКР")
+        "📜 ВКР — защита ВКР")
 
 
 def test_digest_only_4_2_1_days():

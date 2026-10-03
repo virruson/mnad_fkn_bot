@@ -18,6 +18,7 @@ from telegram.error import BadRequest
 logger = logging.getLogger(__name__)
 
 SCREEN_MSG_KEY = "screen_msg_id"
+FORCE_NEW_KEY = "screen_force_new"  # кнопка под фоновым сообщением: следующий экран — новым сообщением
 
 
 async def show_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str,
@@ -37,6 +38,7 @@ async def show_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, text: 
     """
     query = update.callback_query
     chat_id = update.effective_chat.id
+    new_message = context.chat_data.pop(FORCE_NEW_KEY, False) or new_message
 
     if query is not None and not new_message:
         try:
