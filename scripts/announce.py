@@ -10,6 +10,7 @@
 --text    1–2 строки (~80 символов), Telegram HTML; жирным — одно ключевое слово, без эмодзи.
           «\\n» в тексте — перенос строки.
 --button  необязательная кнопка: deadlines | schedule | notify
+--silent  без звука (сообщение придёт, но телефон не зазвонит)
 --dry-run показать текст и число получателей, ничего не отправлять
 """
 import argparse
@@ -49,14 +50,15 @@ def recipients() -> list:
         db.close()
 
 
-async def send(text: str, button: str | None, chat_ids: list) -> int:
+async def send(text: str, button: str | None, chat_ids: list, silent: bool = False) -> int:
     markup = (InlineKeyboardMarkup([[InlineKeyboardButton(BUTTONS[button], callback_data=f"open_{button}")]])
               if button else None)
     sent = 0
     async with Bot(os.environ["BOT_TOKEN"]) as bot:
         for chat_id in chat_ids:
             try:
-                await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=markup)
+                await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=markup,
+                                       disable_notification=silent)
                 sent += 1
             except Exception as e:  # один заблокировавший бота пользователь не должен остановить рассылку
                 logger.error(f"[NEWS] FAILED → {chat_id}: {e}")
@@ -68,6 +70,7 @@ def main():
     parser = argparse.ArgumentParser(description="Объявление «📣 Новое в боте»")
     parser.add_argument('--text', required=True, help="текст объявления (Telegram HTML)")
     parser.add_argument('--button', choices=sorted(BUTTONS), help="кнопка перехода в раздел")
+    parser.add_argument('--silent', action='store_true', help="отправить без звука")
     parser.add_argument('--dry-run', action='store_true', help="ничего не отправлять")
     args = parser.parse_args()
 
@@ -76,11 +79,11 @@ def main():
     print(text)
     if args.button:
         print(f"[ {BUTTONS[args.button]} ]")
-    print(f"\nПолучателей: {len(chat_ids)}")
+    print(f"\nПолучателей: {len(chat_ids)}{' · без звука' if args.silent else ''}")
     if args.dry_run:
         print("[dry-run] ничего не отправлено")
         return
-    sent = asyncio.run(send(text, args.button, chat_ids))
+    sent = asyncio.run(send(text, args.button, chat_ids, silent=args.silent))
     print(f"Отправлено: {sent} из {len(chat_ids)}")
 
 
