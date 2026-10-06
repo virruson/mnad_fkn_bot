@@ -2,11 +2,15 @@
 Раздел «⏳ Дедлайны»: список предметов текущего модуля и карточка предмета.
 Макеты — docs/ui_deadlines.md.
 """
+import asyncio
+
+from sqlalchemy.orm import joinedload
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from bot.handlers.auth import auth_service
-from bot.models import Subject
+from bot.models import Deadline, Subject
+from bot.services import deadline_chart
 from bot.services.deadlines import (
     build_subject_buttons,
     get_screen_subjects,
@@ -16,9 +20,11 @@ from bot.services.deadlines import (
     render_subject_card,
 )
 from bot.utils.database import SessionLocal
-from bot.utils.ui import show_screen
+from bot.utils.ui import show_photo_screen, show_screen
 
 MAIN_MENU_BUTTON = [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
+CHART_BUTTON = [InlineKeyboardButton("📊 Все на графике", callback_data="deadlines_chart")]
+_chart_file_ids: dict[str, str] = {}  # cache_key (дата + хэш данных) → file_id фото в Telegram
 
 
 async def _answer(update: Update):
@@ -42,8 +48,8 @@ async def show_deadlines(update: Update, context: ContextTypes.DEFAULT_TYPE, new
     finally:
         db.close()
 
-    keyboard = [[InlineKeyboardButton(text, callback_data=f"deadlines_subj_{sid}")]
-                for sid, text in buttons]
+    keyboard = [CHART_BUTTON] + [[InlineKeyboardButton(text, callback_data=f"deadlines_subj_{sid}")]
+                                 for sid, text in buttons]
     keyboard.append(MAIN_MENU_BUTTON)
     await show_screen(update, context, render_deadlines_screen(bool(buttons)),
                       new_message=new_message,
@@ -97,3 +103,43 @@ async def show_subject_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="deadlines")]]
     await show_screen(update, context, text,
                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+
+async def show_deadline_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«📊 Все на графике»: фото на 2 недели + подпись; пустое окно — текстовый экран."""
+    await _answer(update)
+    if not auth_service.is_user_verified(update.effective_user.id):
+        await show_screen(update, context, "🔐 Сначала авторизуйтесь.")
+        return
+
+    now = now_msk()
+    today = now.date()
+    db = SessionLocal()
+    try:
+        deadlines = db.query(Deadline).options(joinedload(Deadline.subject)).all()
+        in_window, later = deadline_chart.split_items(deadlines, now)
+        if in_window:
+            caption = deadline_chart.render_caption(in_window, later, today)
+            key = deadline_chart.cache_key(in_window, today)
+        else:
+            empty_text = deadline_chart.render_empty(later)
+    finally:
+        db.close()
+
+    markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("◀️ К предметам", callback_data="deadlines")],
+        MAIN_MENU_BUTTON,
+    ])
+    if not in_window:
+        await show_screen(update, context, empty_text, reply_markup=markup, parse_mode='HTML')
+        return
+
+    photo = _chart_file_ids.get(key)
+    if photo is None:
+        photo = await asyncio.to_thread(deadline_chart.render, in_window, today)
+    sent = await show_photo_screen(update, context, photo, caption=caption,
+                                   parse_mode='HTML', reply_markup=markup)
+    if key not in _chart_file_ids and sent.photo:
+        for old in [k for k in _chart_file_ids if not k.startswith(f"{today}:")]:
+            del _chart_file_ids[old]  # вчерашние картинки больше не нужны
+        _chart_file_ids[key] = sent.photo[-1].file_id

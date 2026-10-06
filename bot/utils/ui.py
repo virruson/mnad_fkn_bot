@@ -47,7 +47,11 @@ async def show_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, text: 
         except BadRequest as e:
             if "not modified" in str(e).lower():
                 return
-            # Сообщение нельзя отредактировать (слишком старое / медиа) — шлём новое
+            # Сообщение нельзя отредактировать (слишком старое / фото графика) — заменяем новым
+            try:
+                await query.message.delete()
+            except BadRequest:
+                pass
             sent = await context.bot.send_message(chat_id=chat_id, text=text, **kwargs)
             context.chat_data[SCREEN_MSG_KEY] = sent.message_id
         return
@@ -62,3 +66,22 @@ async def show_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, text: 
 
     sent = await context.bot.send_message(chat_id=chat_id, text=text, **kwargs)
     context.chat_data[SCREEN_MSG_KEY] = sent.message_id
+
+
+async def show_photo_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, photo, **kwargs):
+    """
+    Экран-фото (график дедлайнов). Текст в фото через edit не превратить, поэтому
+    текущий экран удаляется и отправляется фото; обратно на текст show_screen
+    заменит фото тем же способом. Возвращает отправленное сообщение.
+    """
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+    old_id = query.message.message_id if query is not None else context.chat_data.get(SCREEN_MSG_KEY)
+    if old_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=old_id)
+        except BadRequest:
+            pass
+    sent = await context.bot.send_photo(chat_id=chat_id, photo=photo, **kwargs)
+    context.chat_data[SCREEN_MSG_KEY] = sent.message_id
+    return sent
