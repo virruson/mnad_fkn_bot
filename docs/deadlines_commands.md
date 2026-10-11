@@ -43,6 +43,10 @@ git commit -am "Дедлайны" && git push
 - `short_name` с эмодзи (`📜 ВКР`) — так предмет помечается на кнопке и в рассылке
 - `time` можно не писать → 23:59
 - импорт добавляет и обновляет; с `--prune` (так запускает deploy.sh) ещё удаляет дедлайны, которых нет в json. При любом WARNING удаление пропускается
+- дедлайн с отметками студентов («📈 Мой прогресс») `--prune` не удаляет (WARNING «есть отметки у N студентов»); удалить вместе с отметками — `--force-prune`. Поэтому дедлайн с отметками **не переименовывать**, только менять дату и время
+- `"weights"` у предмета — веса для накопа: `{"hw": 0.5, "quiz": 0.2, "exam": 0.3}`; ключи `hw | quiz | test | project | exam` или одна активность `"hw:№1"`; сумма 1.0, иначе WARNING и веса не грузятся
+- `"progress"` у дедлайна: `"hidden"` — не показывать в прогрессе (жёсткие сроки, пересдачи), `"bonus"` — бонус, вне накопа; без поля — обычная активность
+- `type` `Проект` — новый тип (🛠), например проект RL
 
 ## Вручную на сервере
 
@@ -50,6 +54,7 @@ git commit -am "Дедлайны" && git push
 docker-compose exec bot python -m scripts.import_deadlines --dry-run   # что загрузится
 docker-compose exec bot python -m scripts.import_deadlines             # загрузить
 docker-compose exec bot python -m scripts.import_deadlines --prune     # + удалить то, чего нет в json
+docker-compose exec bot python -m scripts.import_deadlines --prune --force-prune   # + даже с отметками студентов
 docker-compose exec postgres psql -U mnad_bot -d mnad_schedule -c "select version_num from alembic_version"   # версия БД
 docker-compose run --rm postgres-migrate alembic downgrade -1          # откат миграции
 ```
@@ -76,4 +81,4 @@ PY
 docker-compose exec bot python -m scripts.announce --text "В разделе «Дедлайны» появилась <b>ВКР</b>:\nвсе этапы и сроки в одном месте." --button deadlines --dry-run
 docker-compose exec bot python -m scripts.announce --text "..." --button deadlines   # отправить
 ```
-`--button` необязателен: `deadlines` / `schedule` / `notify`. `--silent` — без звука.
+`--button` необязателен: `deadlines` / `schedule` / `notify` / `progress`. `--silent` — без звука.

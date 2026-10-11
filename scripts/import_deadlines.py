@@ -9,6 +9,7 @@
     python -m scripts.import_deadlines --dry-run        # показать, что будет загружено
     python -m scripts.import_deadlines                  # загрузить scripts/deadlines.json
     python -m scripts.import_deadlines --prune          # + удалить дедлайны, которых нет в json
+    python -m scripts.import_deadlines --prune --force-prune   # + даже те, где есть отметки студентов
     python -m scripts.import_deadlines --json other.json
     python -m scripts.import_deadlines --sheet-id <ID>  # то же из Google Sheet (вкладки
         «Дедлайны», «Формулы», «Модули»; ключ — --credentials или GOOGLE_CREDENTIALS)
@@ -17,20 +18,35 @@
     {
       "modules":   [{"name": "5 модуль", "start": "05.09.2026", "end": "26.10.2026"}],
       "subjects":  [{"name": "Продвинутое машинное обучение", "short_name": "Продвинутое МО",
-                     "formula": "0.3·ДЗ + 0.2·Квизы + 0.5·КР"}],
+                     "formula": "0.3·ДЗ + 0.2·Квизы + 0.5·КР",
+                     "weights": {"hw": 0.3, "quiz": 0.2, "exam": 0.5}}],
       "deadlines": [{"subject": "Продвинутое машинное обучение", "type": "ДЗ",
-                     "title": "№1", "date": "03.10.2026", "time": "18:00"}]
+                     "title": "№1", "date": "03.10.2026", "time": "18:00"},
+                    {"subject": "…", "type": "ДЗ", "title": "№1 жёсткий (…)", "date": "…",
+                     "progress": "hidden"}]
     }
-type — ДЗ / Квиз / КВИЗ/КР / КР / Экзамен / Этап (у экзамена title можно не писать). Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, time можно не
+type — ДЗ / Квиз / КВИЗ/КР / КР / Экзамен / Этап / Проект (у экзамена title можно не писать). Даты — ДД.ММ.ГГГГ или ГГГГ-ММ-ДД, time можно не
 указывать (= 23:59). Предмет ищется по точному названию из расписания; не найден —
 WARNING, запись пропускается. Предмета нет в расписании (ВКР) — в "subjects"
 указать "create": true, тогда он будет создан.
 
+weights — веса для накопа в «📈 Мой прогресс»: ключи — типы hw | quiz | test | project | exam
+или одна активность «<тип>:<название>» ("hw:№1"); сумма 1.0. В Google Sheet — колонка «Веса»
+вкладки «Формулы»: hw=0.5; quiz=0.2; exam=0.3. Пусто — веса в БД не меняются.
+progress — роль строки в прогрессе: пусто (обычная активность), bonus (вне накопа), hidden
+(не показывать: жёсткие сроки, пересдачи). В Google Sheet — колонка «Прогресс» вкладки «Дедлайны».
+Карточка дедлайнов, утренняя рассылка и график это поле не учитывают.
+
+ВАЖНО: дедлайн, по которому у студентов есть отметки, не переименовывать — у него ключ
+upsert, переименование = удаление старого + новый (отметки пропадут). Править дату и время.
+
 Скрипт:
-  - upsert дедлайнов по ключу предмет + тип + название (меняются дата и время)
+  - upsert дедлайнов по ключу предмет + тип + название (меняются дата, время и роль)
   - upsert формул и коротких названий предметов, модулей по названию
   - НЕ удаляет ничего из БД, кроме режима --prune: тогда дедлайны, которых нет
-    в источнике, удаляются (если в дедлайнах нет WARNING)
+    в источнике, удаляются (если в дедлайнах нет WARNING). Дедлайн с отметками студентов
+    --prune не удаляет (WARNING «есть отметки у N студентов»), только с --force-prune.
+  - оценки студентов не выводит — только количество отметок
 """
 import argparse
 import json
@@ -42,10 +58,16 @@ from pathlib import Path
 # Запуск как модуль из корня проекта: python -m scripts.import_deadlines ...
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bot.utils.database import SessionLocal
-from bot.models import Subject, Deadline, Module
+from sqlalchemy import func
 
-KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test', 'экзамен': 'exam', 'экз': 'exam', 'этап': 'milestone'}
+from bot.utils.database import SessionLocal
+from bot.models import Subject, Deadline, Module, UserProgress
+from bot.services.progress import parse_weights, weights_sum_ok
+
+KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test', 'экзамен': 'exam', 'экз': 'exam',
+         'этап': 'milestone', 'проект': 'project'}
+ROLES = {'': 'item', 'item': 'item', 'bonus': 'bonus', 'hidden': 'hidden'}
+ROLE_HINTS = ('жёсткий', 'жесткий', 'пересдача', 'бонус')  # у обычной активности такого быть не должно
 TAB_DEADLINES, TAB_FORMULAS, TAB_MODULES = "Дедлайны", "Формулы", "Модули"
 DEFAULT_CREDENTIALS = Path(__file__).resolve().parent / "credentials.json"
 DEFAULT_JSON = Path(__file__).resolve().parent / "deadlines.json"
@@ -72,12 +94,19 @@ def fetch_json(path):
         TAB_MODULES: [[m.get('name') or '', m.get('start') or '', m.get('end') or '']
                       for m in data.get('modules', [])],
         TAB_FORMULAS: [[s.get('name') or '', s.get('formula') or '', s.get('short_name') or '',
-                        'create' if s.get('create') else '']
+                        'create' if s.get('create') else '', _weights_cell(s.get('weights'))]
                        for s in data.get('subjects', [])],
         TAB_DEADLINES: [[d.get('subject') or '', d.get('type') or '', d.get('title') or '',
-                         d.get('date') or '', d.get('time') or '']
+                         d.get('date') or '', d.get('time') or '', d.get('progress') or '']
                         for d in data.get('deadlines', [])],
     }
+
+
+def _weights_cell(weights):
+    """{"hw": 0.5, …} из json → «hw=0.5; …», как в колонке «Веса» Google Sheet."""
+    if isinstance(weights, dict):
+        return "; ".join(f"{k}={v}" for k, v in weights.items())
+    return weights or ''
 
 
 def parse_date(value):
@@ -110,7 +139,7 @@ class Importer:
     def __init__(self, session):
         self.session = session
         self.subjects = {s.name.strip(): s for s in session.query(Subject).all()}
-        self.stats = {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0, 'deleted': 0}
+        self.stats = {'created': 0, 'updated': 0, 'unchanged': 0, 'skipped': 0, 'deleted': 0, 'kept': 0}
         self.seen_deadline_ids = set()
         self.deadline_warnings = 0
         self.log = []
@@ -123,6 +152,10 @@ class Importer:
 
     def _warn(self, where, message):
         self._record('skipped', f"{where}: {message} — пропущено")
+
+    def _note(self, where, message):
+        """WARNING-подсказка: запись загружена, удаление (--prune) не блокирует."""
+        self.log.append(f"  WARNING {where}: {message}")
 
     def _subject(self, where, name):
         subject = self.subjects.get(name)
@@ -167,7 +200,7 @@ class Importer:
 
     def import_formulas(self, rows):
         for i, row in enumerate(rows, start=2):
-            name, formula, short_name, create = cells(row, 4)
+            name, formula, short_name, create, weights_raw = cells(row, 5)
             if not name:
                 continue
             if create and name not in self.subjects:   # предмет не из расписания (ВКР)
@@ -182,6 +215,17 @@ class Importer:
                 formula = formula.split('=', 1)[-1].strip()
             values = {'grading_formula': formula or subject.grading_formula,
                       'short_name': short_name or subject.short_name}
+            if weights_raw:
+                try:
+                    weights = parse_weights(weights_raw)
+                except ValueError as e:
+                    self._note(f"{TAB_FORMULAS}!{i}", f"{name}: веса не загружены — {e}")
+                else:
+                    if not weights_sum_ok(weights):
+                        self._note(f"{TAB_FORMULAS}!{i}",
+                                   f"{name}: сумма весов {sum(weights.values()):g}, а не 1.0 — веса не загружены")
+                    else:
+                        values['grading_weights'] = weights
             if changes := self._apply(subject, values):
                 self._record('updated', f"{name}: {'; '.join(changes)}")
             else:
@@ -192,19 +236,32 @@ class Importer:
         self._import_deadline_rows(rows)
         self.deadline_warnings = self.stats['skipped'] - skipped_before
 
-    def prune_deadlines(self):
-        """Удаляет дедлайны, которых больше нет в источнике (переименованные, отменённые)."""
+    def prune_deadlines(self, force=False):
+        """Удаляет дедлайны, которых больше нет в источнике (переименованные, отменённые).
+
+        Дедлайн с отметками студентов («Мой прогресс») без force не удаляется.
+        """
         if self.deadline_warnings:
             print("  удаление пропущено: в дедлайнах есть WARNING — сначала исправьте их")
             return
         stale = self.session.query(Deadline).filter(Deadline.id.notin_(self.seen_deadline_ids)).all()
+        marks = dict(self.session.query(UserProgress.deadline_id, func.count(UserProgress.user_id))
+                     .filter(UserProgress.deadline_id.in_([d.id for d in stale]))
+                     .group_by(UserProgress.deadline_id).all()) if stale else {}
         for d in stale:
-            self._record('deleted', f"{d.subject.name} · {d.kind} {d.title} · {d.due_date:%d.%m.%Y}")
+            label = f"{d.subject.name} · {d.kind} {d.title} · {d.due_date:%d.%m.%Y}"
+            if marks.get(d.id) and not force:
+                self.stats['kept'] += 1
+                self.log.append(f"  WARNING {label}: есть отметки у {marks[d.id]} студентов — не удалено "
+                                f"(удалить вместе с отметками: --force-prune)")
+                continue
+            suffix = f" (с отметками у {marks[d.id]} студентов)" if marks.get(d.id) else ""
+            self._record('deleted', label + suffix)
             self.session.delete(d)
 
     def _import_deadline_rows(self, rows):
         for i, row in enumerate(rows, start=2):
-            name, kind_raw, title, date_raw, time_raw = cells(row, 5)
+            name, kind_raw, title, date_raw, time_raw, role_raw = cells(row, 6)
             if not any((name, kind_raw, title, date_raw)):
                 continue
             where = f"{TAB_DEADLINES}!{i}"
@@ -213,8 +270,14 @@ class Importer:
                 continue
             kind = KINDS.get(kind_raw.lower().replace(' ', ''))
             if kind is None:
-                self._warn(where, f"тип «{kind_raw}» — ожидается ДЗ, Квиз, КВИЗ/КР или КР")
+                self._warn(where, f"тип «{kind_raw}» — ожидается ДЗ, Квиз, КВИЗ/КР, КР, Экзамен, Этап или Проект")
                 continue
+            role = ROLES.get(role_raw.lower())
+            if role is None:
+                self._warn(where, f"progress «{role_raw}» — ожидается пусто, bonus или hidden")
+                continue
+            if role == 'item' and any(h in title.lower() for h in ROLE_HINTS):
+                self._note(where, f"«{title}» — обычная активность? Возможно, забыли progress: hidden / bonus")
             if not title and kind != 'exam':   # у экзамена название необязательно
                 self._warn(where, "нет названия")
                 continue
@@ -229,10 +292,11 @@ class Importer:
                 subject_id=subject.id, kind=kind, title=title).first()
             if deadline is None:
                 deadline = Deadline(subject_id=subject.id, kind=kind, title=title,
-                                    due_date=due_date, due_time=due_time)
+                                    due_date=due_date, due_time=due_time, progress_role=role)
                 self.session.add(deadline)
                 self._record('created', label)
-            elif changes := self._apply(deadline, {'due_date': due_date, 'due_time': due_time}):
+            elif changes := self._apply(deadline, {'due_date': due_date, 'due_time': due_time,
+                                                   'progress_role': role}):
                 self._record('updated', f"{label} ({'; '.join(changes)})")
             else:
                 self._record('unchanged', label)
@@ -240,7 +304,7 @@ class Importer:
             self.seen_deadline_ids.add(deadline.id)
 
 
-def run(tabs, dry_run=False, prune=False):
+def run(tabs, dry_run=False, prune=False, force_prune=False):
     session = SessionLocal()
     importer = Importer(session)
     try:
@@ -259,7 +323,7 @@ def run(tabs, dry_run=False, prune=False):
         if prune and tabs.get(TAB_DEADLINES) is not None:
             before = len(importer.log)
             print("[Удаление] дедлайны, которых нет в источнике")
-            importer.prune_deadlines()
+            importer.prune_deadlines(force=force_prune)
             print("\n".join(importer.log[before:]) or "  нечего удалять")
 
         if dry_run:
@@ -284,6 +348,8 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help="не сохранять изменения в БД")
     parser.add_argument('--prune', action='store_true',
                         help="удалить из БД дедлайны, которых нет в источнике (переименованные/отменённые)")
+    parser.add_argument('--force-prune', action='store_true',
+                        help="вместе с --prune: удалять и дедлайны с отметками студентов (отметки пропадут)")
     args = parser.parse_args()
 
     if args.sheet_id:
@@ -292,9 +358,10 @@ def main():
         print(f"Источник: {args.json}")
         tabs = fetch_json(args.json)
 
-    stats = run(tabs, dry_run=args.dry_run, prune=args.prune)
+    stats = run(tabs, dry_run=args.dry_run, prune=args.prune or args.force_prune, force_prune=args.force_prune)
+    kept = f", оставлено из-за отметок: {stats['kept']}" if stats['kept'] else ""
     print(f"Создано: {stats['created']}, обновлено: {stats['updated']}, удалено: {stats['deleted']}, "
-          f"без изменений: {stats['unchanged']}, пропущено: {stats['skipped']}")
+          f"без изменений: {stats['unchanged']}, пропущено: {stats['skipped']}{kept}")
 
 if __name__ == '__main__':
     main()

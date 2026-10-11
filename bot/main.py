@@ -12,6 +12,7 @@ from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages
 from bot.handlers.notifications import notify_menu, notify_setup, notify_subscribe, notify_toggle
 from bot.handlers.deadlines import show_deadlines, show_subject_card, open_deadlines_from_digest, open_section, show_deadline_chart
+from bot.handlers import progress
 from bot.services.scheduler import setup_scheduler
 
 # Импортируем обработчики расписания
@@ -67,6 +68,19 @@ def main():
     )
     application.add_handler(custom_period_handler)
 
+    # 1b. «📈 Мой прогресс»: ввод оценки вручную («✏️ Другая»)
+    progress_input_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(progress.progress_input_start, pattern="^prog_input_\\d+$")],
+        states={
+            progress.GRADE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, progress.progress_input_text)],
+        },
+        fallbacks=[CommandHandler("cancel", progress.progress_input_cancel)],
+        per_message=False,
+        allow_reentry=True,
+        conversation_timeout=600,  # ушёл в другой раздел и не ввёл число — через 10 мин текст снова обычный
+    )
+    application.add_handler(progress_input_handler)
+
     # 2. ConversationHandler для авторизации
     auth_conv_handler = ConversationHandler(
         entry_points=[
@@ -89,6 +103,7 @@ def main():
     application.add_handler(CommandHandler("schedule", show_schedule))
     application.add_handler(CommandHandler("today", schedule_today_callback))
     application.add_handler(CommandHandler(["deadlines", "tasks"], show_deadlines))  # /tasks — старый алиас
+    application.add_handler(CommandHandler(["progress", "subjects"], progress.show_progress))  # /subjects — старый алиас
 
     # 4. Callback-кнопки (порядок важен)
     application.add_handler(CallbackQueryHandler(auth.login_start, pattern="^login$"))
@@ -111,7 +126,12 @@ def main():
     application.add_handler(CallbackQueryHandler(show_subject_card,          pattern="^deadlines_subj_\\d+$"))
     application.add_handler(CallbackQueryHandler(show_deadline_chart,        pattern="^deadlines_chart$"))
     application.add_handler(CallbackQueryHandler(open_deadlines_from_digest, pattern="^deadlines_open$"))
-    application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify)$"))
+    application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify|progress)$"))
+    # Мой прогресс
+    application.add_handler(CallbackQueryHandler(progress.show_progress,     pattern="^progress$"))
+    application.add_handler(CallbackQueryHandler(progress.progress_subject,  pattern="^prog_s_\\d+$"))
+    application.add_handler(CallbackQueryHandler(progress.progress_action,
+                                                 pattern="^prog_(d|skip|undo|clr|edit)_\\d+$|^prog_g_\\d+_\\d+$"))
     # универсальный — последним
     application.add_handler(CallbackQueryHandler(button_callback))
 

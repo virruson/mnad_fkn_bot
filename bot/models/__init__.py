@@ -1,5 +1,6 @@
 # bot/models/__init__.py
-from sqlalchemy import Column, Integer, String, Date, Time, Text, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Date, Time, Text, ForeignKey, DateTime, Boolean, Numeric, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -24,6 +25,7 @@ class Subject(Base):
     name = Column(String(255), nullable=False, comment='Название предмета')
     short_name = Column(String(50), nullable=True, comment='Короткое имя для кнопок, до 25 символов')
     grading_formula = Column(Text, nullable=True, comment='Правая часть: 0.3·ДЗ + 0.2·Квизы + 0.5·КР')
+    grading_weights = Column(JSONB, nullable=True, comment='Веса для накопа: {"hw": 0.5, "quiz": 0.2, "exam": 0.3}')
     
     # Связи
     schedules = relationship("Schedule", back_populates="subject")
@@ -170,14 +172,17 @@ class Deadline(Base):
     """Дедлайн по предмету, общий для всех групп."""
     __tablename__ = 'deadlines'
 
-    KINDS = ('hw', 'quiz', 'test', 'exam', 'milestone')
+    KINDS = ('hw', 'quiz', 'test', 'exam', 'milestone', 'project')
+    PROGRESS_ROLES = ('item', 'bonus', 'hidden')
 
     id = Column(Integer, primary_key=True)
     subject_id = Column(Integer, ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
-    kind = Column(String(10), nullable=False, comment='hw | quiz | test | exam | milestone')
+    kind = Column(String(10), nullable=False, comment='hw | quiz | test | exam | milestone | project')
     title = Column(String(255), nullable=False)
     due_date = Column(Date, nullable=False)
     due_time = Column(Time, nullable=True, comment='NULL = 23:59')
+    progress_role = Column(String(10), nullable=False, default='item', server_default='item',
+                           comment='«Мой прогресс»: item | bonus (вне накопа) | hidden (жёсткий срок, пересдача)')
 
     subject = relationship("Subject", back_populates="deadlines")
 
@@ -185,5 +190,24 @@ class Deadline(Base):
         return f"<Deadline {self.kind} {self.title} {self.due_date}>"
 
 
+class UserProgress(Base):
+    """Отметка студента по дедлайну: сдано и оценка. Видит только владелец."""
+    __tablename__ = 'user_progress'
+    __table_args__ = (UniqueConstraint('user_id', 'deadline_id', name='uq_user_progress_user_deadline'),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    deadline_id = Column(Integer, ForeignKey('deadlines.id', ondelete='CASCADE'), nullable=False)
+    done_at = Column(DateTime, nullable=True, comment='NULL = не сдано')
+    grade = Column(Numeric(3, 1), nullable=True, comment='0–10')
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    deadline = relationship("Deadline")
+
+    def __repr__(self):
+        return f"<UserProgress u{self.user_id} d{self.deadline_id} {self.grade}>"
+
+
 # Экспортируем все модели
-__all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule', 'User', 'Module', 'Deadline']
+__all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule', 'User', 'Module', 'Deadline',
+           'UserProgress']

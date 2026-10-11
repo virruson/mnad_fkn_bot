@@ -66,11 +66,12 @@ else
     echo "✅ requirements.txt и Dockerfile не менялись — ребилд не нужен (код обновлён через volume)"
 fi
 
-docker-compose up -d --remove-orphans postgres bot
-
 echo ""
 echo "=== [4/4] Применение миграций БД ==="
+# сначала миграции, потом бот: новый код сразу видит новые колонки
+docker-compose up -d --remove-orphans postgres
 docker-compose run --rm postgres-migrate
+docker-compose up -d --remove-orphans bot
 
 # Дедлайны лежат в git: если scripts/deadlines.json изменился — загружаем в БД
 if git diff --name-only "$LOCAL" "$REMOTE" | grep -q "^scripts/deadlines.json$"; then

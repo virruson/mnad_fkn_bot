@@ -20,7 +20,7 @@ from matplotlib.patches import FancyBboxPatch, Rectangle  # noqa: E402
 
 from bot.models import Deadline  # noqa: E402
 from bot.services.deadlines import (  # noqa: E402
-    END_OF_DAY, KIND_IN_DIGEST, WEEKDAYS, _digest_title, display_name, due_at,
+    END_OF_DAY, HARD_SUFFIX, KIND_IN_DIGEST, WEEKDAYS, _digest_title, display_name, due_at,
 )
 
 WINDOW_DAYS = 14
@@ -36,11 +36,11 @@ STYLE = {  # kind → (цвет, маркер, размер маркера px, �
     'hw':        (BLUE,   'o', 16, "ДЗ"),
     'quiz':      (YELLOW, 'D', 16, "Квиз/КР"),
     'test':      (YELLOW, 's', 16, "КР"),
+    'project':   (BLUE,   's', 16, "Проект"),
     'exam':      (YELLOW, '*', 24, "Экзамен"),
     'milestone': (TEAL,   '^', 20, "Этап ВКР"),
 }
-LEGEND_ORDER = ('hw', 'quiz', 'test', 'exam', 'milestone')
-HARD_SUFFIX = " жёсткий"
+LEGEND_ORDER = ('hw', 'quiz', 'test', 'project', 'exam', 'milestone')
 EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿️‍]")
 
 

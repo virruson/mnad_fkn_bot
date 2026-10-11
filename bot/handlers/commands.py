@@ -29,7 +29,7 @@ def _build_main_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton("⏳ Дедлайны", callback_data="deadlines"),
-                InlineKeyboardButton("📖 Предметы", callback_data="subjects"),
+                InlineKeyboardButton("📈 Мой прогресс", callback_data="progress"),
             ],
             [InlineKeyboardButton("🚪 Выйти", callback_data="logout")],
         ])
@@ -71,6 +71,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/schedule - Расписание\n"
         "/today - Расписание на сегодня\n"
         "/deadlines - Дедлайны\n"
+        "/progress - Мой прогресс\n"
         "/login - Авторизация\n"
         "/logout - Выйти\n\n"
         "📅 **Доступные периоды расписания:**\n"
@@ -140,15 +141,5 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_schedule_callback(update, context)
     elif query.data.startswith("stream_"):
         await show_today_schedule(update, context)
-    
-    elif query.data == "subjects":
-        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            text="📖 Предметы\n\n"
-                 "Список предметов и преподавателей.\n"
-                 "Функция в разработке.",
-            reply_markup=reply_markup,
-        )
     else:
         await query.edit_message_text(text=f"⚙️ Функция {query.data} в разработке")

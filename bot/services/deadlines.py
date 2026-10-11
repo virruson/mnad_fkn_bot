@@ -26,11 +26,14 @@ KIND_BLOCKS = (          # порядок блоков в карточке
     ('hw', '📝', 'ДЗ'),
     ('quiz', '🧠', 'Квизы/КР'),   # в таблице курса квизы и КР в одной колонке
     ('test', '📋', 'КР'),
+    ('project', '🛠', 'Проект'),
     ('exam', '🎓', 'Экзамен'),
     ('milestone', '📌', 'Этапы'),  # ВКР и прочие этапы без ДЗ/экзамена
 )
-KIND_IN_DIGEST = {'hw': 'ДЗ', 'quiz': 'квиз/КР', 'test': 'КР', 'exam': 'экзамен', 'milestone': ''}
-OPTIONAL_KINDS = {'test', 'milestone'}  # блок показываем, только если в нём что-то есть
+KIND_IN_DIGEST = {'hw': 'ДЗ', 'quiz': 'квиз/КР', 'test': 'КР', 'exam': 'экзамен', 'milestone': '',
+                  'project': 'проект'}
+OPTIONAL_KINDS = {'test', 'milestone', 'project'}  # блок показываем, только если в нём что-то есть
+HARD_SUFFIX = " жёсткий"  # «№1 жёсткий (…)» — штрафной срок к «№1» того же предмета и типа
 
 
 def now_msk() -> datetime:
@@ -120,11 +123,13 @@ def get_subject_deadlines(db, subject_ids) -> dict:
 # Экран «⏳ Дедлайны»: список предметов
 # ---------------------------------------------------------------------------
 
-def build_subject_buttons(subjects, deadlines_by_subject: dict, now: datetime) -> list:
+def build_subject_buttons(subjects, deadlines_by_subject: dict, now: datetime,
+                          mark_urgent: bool = True) -> list:
     """
     [(subject_id, текст_кнопки), ...] в порядке: срочные, дальше по ближайшему
     дедлайну, предметы без будущих дедлайнов — в конце. ВКР (только этапы) всегда
-    последняя: «❗» получает, но место не меняет.
+    последняя: «❗» получает, но место не меняет. mark_urgent=False — тот же порядок
+    без «❗» («Мой прогресс»).
     """
     items = []
     for s in subjects:
@@ -136,7 +141,7 @@ def build_subject_buttons(subjects, deadlines_by_subject: dict, now: datetime) -
         items.append((pinned_last, not urgent, nearest is None, nearest or datetime.max,
                       display_name(s), s.id, urgent))
     items.sort()
-    return [(sid, f"❗ {name}" if urgent else name) for *_, name, sid, urgent in items]
+    return [(sid, f"❗ {name}" if urgent and mark_urgent else name) for *_, name, sid, urgent in items]
 
 
 def render_deadlines_screen(has_subjects: bool) -> str:
@@ -228,6 +233,20 @@ def _digest_title(d: Deadline) -> str:
 def get_digest_deadlines(db, today: date) -> list:
     dates = [today + timedelta(days=n) for n in DIGEST_OFFSETS]
     return db.query(Deadline).filter(Deadline.due_date.in_(dates)).all()
+
+
+def hard_base_key(d: Deadline):
+    """(subject_id, kind, «№1») для штрафного срока «№1 жёсткий (…)», иначе None."""
+    if HARD_SUFFIX not in d.title:
+        return None
+    return d.subject_id, d.kind, d.title.split(HARD_SUFFIX, 1)[0].strip()
+
+
+def without_done(deadlines: list, done: list) -> list:
+    """Дедлайны без сданных студентом (done) и без жёстких сроков к сданным заданиям."""
+    done_ids = {d.id for d in done}
+    done_keys = {(d.subject_id, d.kind, d.title) for d in done}
+    return [d for d in deadlines if d.id not in done_ids and hard_base_key(d) not in done_keys]
 
 
 def render_deadline_digest(deadlines: list, today: date):

@@ -15,8 +15,8 @@ from sqlalchemy.orm import joinedload
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.utils.database import SessionLocal, get_schedule_by_date
-from bot.models import User
-from bot.services.deadlines import get_digest_deadlines, render_deadline_digest
+from bot.models import Deadline, User, UserProgress
+from bot.services.deadlines import get_digest_deadlines, render_deadline_digest, without_done
 
 logger = logging.getLogger(__name__)
 
@@ -229,20 +229,28 @@ def replan_reminders_for_user(jq, telegram_id):
 # ---------------------------------------------------------------------------
 
 async def send_deadline_digest(bot, today) -> int:
-    """Рассылает утреннее сообщение о дедлайнах на дату today. Возвращает число отправок."""
+    """Рассылает утреннее сообщение о дедлайнах на дату today. Возвращает число отправок.
+
+    Текст у каждого свой: сданное в «📈 Мой прогресс» (и жёсткий срок к нему) не напоминаем;
+    если после этого напоминать не о чем — сообщение этому студенту не шлём.
+    """
     db = SessionLocal()
     try:
         deadlines = get_digest_deadlines(db, today)
         for d in deadlines:
             _ = d.subject  # подгружаем предмет, пока сессия открыта
-        text = render_deadline_digest(deadlines, today)
-        if text is None:
+        if render_deadline_digest(deadlines, today) is None:
             logger.warning(f"[NOTIFY] deadline_digest {today}: дедлайнов на 4/2/1 день нет")
             return 0
-        chat_ids = [u.telegram_id for u in db.query(User).filter(
-            User.deadlines_enabled == True,
-            User.is_verified == True,
-        ).all()]
+        users = db.query(User).filter(User.deadlines_enabled == True, User.is_verified == True).all()
+        done_by_user = {}
+        for user_id, d in (db.query(UserProgress.user_id, Deadline)
+                           .join(Deadline, UserProgress.deadline_id == Deadline.id)
+                           .filter(UserProgress.done_at.isnot(None),
+                                   UserProgress.user_id.in_([u.id for u in users]))):
+            done_by_user.setdefault(user_id, []).append(d)
+        texts = [(u.telegram_id, render_deadline_digest(without_done(deadlines, done_by_user.get(u.id, [])), today))
+                 for u in users]
     finally:
         db.close()
 
@@ -250,13 +258,15 @@ async def send_deadline_digest(bot, today) -> int:
         InlineKeyboardButton("⏳ Открыть дедлайны", callback_data="deadlines_open")
     ]])
     sent = 0
-    for chat_id in chat_ids:
+    for chat_id, text in texts:
+        if text is None:
+            continue  # всё на эти дни уже сдано
         try:
             await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=keyboard)
             sent += 1
         except Exception as e:
             logger.error(f"[NOTIFY] deadline_digest FAILED → {chat_id}: {e}")
-    logger.warning(f"[NOTIFY] deadline_digest {today}: отправлено {sent} из {len(chat_ids)}")
+    logger.warning(f"[NOTIFY] deadline_digest {today}: отправлено {sent} из {len(texts)}")
     return sent
 
 

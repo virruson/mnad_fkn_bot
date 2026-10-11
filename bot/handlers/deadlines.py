@@ -65,6 +65,7 @@ async def open_deadlines_from_digest(update: Update, context: ContextTypes.DEFAU
 async def open_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Кнопка «Открыть …» под объявлением 📣: объявление остаётся, раздел открывается новым экраном."""
     from bot.handlers.notifications import notify_menu
+    from bot.handlers.progress import show_progress
     from bot.handlers.schedule import show_schedule
     from bot.utils.ui import FORCE_NEW_KEY
 
@@ -76,6 +77,8 @@ async def open_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_deadlines(update, context)
     elif section == "notify":
         await notify_menu(update, context)
+    elif section == "progress":
+        await show_progress(update, context)
     else:  # schedule
         await query.answer()
         await show_schedule(update, context)
