@@ -4,32 +4,24 @@
   - plan_reminders   00:05 МСК — ставит run_once за 15 мин  (users.reminders_enabled)
   - deadline_digest  10:00 МСК — дедлайны за 4, 2 и 1 день  (users.deadlines_enabled)
   - plan_reminders   и через 5 с после старта — восстановить напоминания на остаток дня.
+Что кому приходит — только по предметам из «📚 Мои предметы» (bot/services/selection.py).
 """
 import logging
 from datetime import datetime, timedelta, time
 
 import pytz
 
-from sqlalchemy.orm import joinedload
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.utils.database import SessionLocal, get_schedule_by_date
-from bot.models import Deadline, User, UserProgress
+from bot.models import Deadline, Subject, User, UserProgress
 from bot.services.deadlines import get_digest_deadlines, render_deadline_digest, without_done
+from bot.services.selection import get_selection, get_selection_by_telegram_id, is_visible, visible_deadlines
 
 logger = logging.getLogger(__name__)
 
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 REMINDER_BEFORE = timedelta(minutes=15)
-ALL_STREAMS_NAME = "все потоки"  # специальный поток — без фильтрации
-
-
-def _stream_filter(user) -> str | None:
-    """Возвращает stream_name для фильтра или None (все потоки)."""
-    if not user.stream or user.stream.name == ALL_STREAMS_NAME:
-        return None
-    return user.stream.name
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +45,16 @@ def _format_lesson(sch) -> str:
 
 async def _send_reminder(context):
     """Отправляет напоминание одному пользователю об одном занятии."""
-    data = context.job.data  # {'chat_id': str, 'text': str}
+    data = context.job.data  # {'chat_id': str, 'text': str, 'subject_id': int}
+    # Студент мог снять предмет в «📚 Мои предметы» после постановки напоминания
+    db = SessionLocal()
+    try:
+        subject = db.get(Subject, data.get('subject_id')) if data.get('subject_id') else None
+        if subject is not None and not is_visible(subject, get_selection_by_telegram_id(db, data['chat_id'])):
+            logger.warning(f"[NOTIFY] reminder skipped → {data['chat_id']}: предмет снят из выбора")
+            return
+    finally:
+        db.close()
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("OK  •  Открыть меню", callback_data="reminder_ok")
     ]])
@@ -103,6 +104,7 @@ def _schedule_reminders_for_user(jq, user, schedules, today):
                 'chat_id': user.telegram_id,
                 'text': text,
                 'lesson_time': lesson_time.strftime('%H:%M'),
+                'subject_id': sch.Schedule.subject_id,
             },
             name=job_name,
         )
@@ -119,29 +121,28 @@ async def daily_digest(context):
 
     db = SessionLocal()
     try:
-        # joinedload — загружаем stream сразу, без lazy load
-        users = db.query(User).options(joinedload(User.stream)).filter(
+        users = db.query(User).filter(
             User.digest_enabled == True,
             User.is_verified == True,
-            User.stream_id != None,
         ).all()
 
         for user in users:
-            stream_name = _stream_filter(user)
-            display_name = user.stream.name if user.stream else "все потоки"
+            selection = get_selection(db, user)
             telegram_id = user.telegram_id
+            if selection.is_empty:
+                continue  # предметы не выбраны — ничего не шлём
 
             # Отдельная сессия для расписания — избегаем конфликта identity map
             db2 = SessionLocal()
             try:
-                schedules = get_schedule_by_date(db2, today, stream_name=stream_name)
+                schedules = get_schedule_by_date(db2, today, selection)
 
                 if not schedules:
                     text = f"📅 {today.strftime('%d.%m.%Y')} — занятий нет 🎉"
                 else:
                     day_names = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
                     weekday = day_names[today.weekday()]
-                    header = f"📅 Расписание на {today.strftime('%d.%m')} ({weekday})\nГруппа: {display_name}"
+                    header = f"📅 Расписание на {today.strftime('%d.%m')} ({weekday})"
                     lessons = "\n\n".join(_format_lesson(s) for s in schedules)
                     text = f"{header}\n\n{lessons}"
 
@@ -164,10 +165,9 @@ async def daily_digest(context):
 # ---------------------------------------------------------------------------
 
 def _reminder_users_query(db):
-    return db.query(User).options(joinedload(User.stream)).filter(
+    return db.query(User).filter(
         User.reminders_enabled == True,
         User.is_verified == True,
-        User.stream_id != None,
     )
 
 
@@ -176,7 +176,8 @@ def _plan_reminders(jq, users, today) -> int:
     for user in users:
         db2 = SessionLocal()
         try:
-            schedules = get_schedule_by_date(db2, today, stream_name=_stream_filter(user))
+            selection = get_selection(db2, user)
+            schedules = [] if selection.is_empty else get_schedule_by_date(db2, today, selection)
             if schedules:
                 _schedule_reminders_for_user(jq, user, schedules, today)
                 count += len(schedules)
@@ -231,7 +232,8 @@ def replan_reminders_for_user(jq, telegram_id):
 async def send_deadline_digest(bot, today) -> int:
     """Рассылает утреннее сообщение о дедлайнах на дату today. Возвращает число отправок.
 
-    Текст у каждого свой: сданное в «📈 Мой прогресс» (и жёсткий срок к нему) не напоминаем;
+    Текст у каждого свой: только предметы из «📚 Мои предметы»; сданное в «📈 Мой прогресс»
+    (и жёсткий срок к нему) не напоминаем;
     если после этого напоминать не о чем — сообщение этому студенту не шлём.
     """
     db = SessionLocal()
@@ -249,8 +251,10 @@ async def send_deadline_digest(bot, today) -> int:
                            .filter(UserProgress.done_at.isnot(None),
                                    UserProgress.user_id.in_([u.id for u in users]))):
             done_by_user.setdefault(user_id, []).append(d)
-        texts = [(u.telegram_id, render_deadline_digest(without_done(deadlines, done_by_user.get(u.id, [])), today))
-                 for u in users]
+        texts = []
+        for u in users:
+            own = without_done(visible_deadlines(deadlines, get_selection(db, u)), done_by_user.get(u.id, []))
+            texts.append((u.telegram_id, render_deadline_digest(own, today)))
     finally:
         db.close()
 

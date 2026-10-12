@@ -26,6 +26,7 @@ class Subject(Base):
     short_name = Column(String(50), nullable=True, comment='Короткое имя для кнопок, до 25 символов')
     grading_formula = Column(Text, nullable=True, comment='Правая часть: 0.3·ДЗ + 0.2·Квизы + 0.5·КР')
     grading_weights = Column(JSONB, nullable=True, comment='Веса для накопа: {"hw": 0.5, "quiz": 0.2, "exam": 0.3}')
+    is_elective = Column(Boolean, nullable=False, default=False, server_default='false', comment='Маголего')
     
     # Связи
     schedules = relationship("Schedule", back_populates="subject")
@@ -142,15 +143,16 @@ class User(Base):
     is_verified = Column(Boolean, default=True, comment='Верифицирован ли пользователь')
     verified_at = Column(DateTime, comment='Дата верификации')
     last_login = Column(DateTime, comment='Последний вход')
+    # Устарело (до «📚 Мои предметы» — выбранная группа). Код не читает; удалить отдельной миграцией.
     stream_id = Column(Integer, ForeignKey('streams.id', ondelete='SET NULL'), nullable=True)
+    common_enabled = Column(Boolean, nullable=False, default=True, server_default='true',
+                            comment='«Общие предметы» в «📚 Мои предметы»')
     digest_enabled = Column(Boolean, default=False, nullable=False, comment='Расписание на день в 10:00')
     reminders_enabled = Column(Boolean, default=False, nullable=False, comment='Напоминание за 15 мин')
     deadlines_enabled = Column(Boolean, default=False, nullable=False, comment='Дедлайны за 4, 2, 1 дн')
     news_enabled = Column(Boolean, default=True, nullable=False, comment='Новости бота (📣 Новое в боте), вкл по умолчанию')
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-
-    stream = relationship("Stream", foreign_keys=[stream_id])
 
     def __repr__(self):
         return f"<User {self.telegram_id}: {self.email}>"
@@ -190,6 +192,14 @@ class Deadline(Base):
         return f"<Deadline {self.kind} {self.title} {self.due_date}>"
 
 
+class UserElective(Base):
+    """Маголего, на которое записан студент («📚 Мои предметы»)."""
+    __tablename__ = 'user_electives'
+
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    subject_id = Column(Integer, ForeignKey('subjects.id', ondelete='CASCADE'), primary_key=True)
+
+
 class UserProgress(Base):
     """Отметка студента по дедлайну: сдано и оценка. Видит только владелец."""
     __tablename__ = 'user_progress'
@@ -210,4 +220,4 @@ class UserProgress(Base):
 
 # Экспортируем все модели
 __all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule', 'User', 'Module', 'Deadline',
-           'UserProgress']
+           'UserProgress', 'UserElective']

@@ -10,7 +10,8 @@ from telegram.error import BadRequest  # Добавляем импорт для 
 from bot.handlers.commands import start, help_command, button_callback
 from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages
-from bot.handlers.notifications import notify_menu, notify_setup, notify_subscribe, notify_toggle
+from bot.handlers.notifications import notify_menu, notify_toggle
+from bot.handlers import my_subjects
 from bot.handlers.deadlines import show_deadlines, show_subject_card, open_deadlines_from_digest, open_section, show_deadline_chart
 from bot.handlers import progress
 from bot.services.scheduler import setup_scheduler
@@ -19,7 +20,6 @@ from bot.services.scheduler import setup_scheduler
 from bot.handlers.schedule import (
     show_schedule,
     show_schedule_callback,
-    show_today_schedule,
     schedule_today_callback,
     schedule_tomorrow_callback,
     schedule_week_callback,
@@ -113,20 +113,20 @@ def main():
     application.add_handler(CallbackQueryHandler(schedule_week_callback, pattern="^schedule_week$"))
     application.add_handler(CallbackQueryHandler(schedule_next_week_callback, pattern="^schedule_next_week$"))
     application.add_handler(CallbackQueryHandler(schedule_month_callback, pattern="^schedule_month$"))
-    application.add_handler(CallbackQueryHandler(show_schedule_callback, pattern="^schedule_choose_stream$"))
-    application.add_handler(CallbackQueryHandler(show_today_schedule, pattern="^stream_\\d+$"))
     # Уведомления
     application.add_handler(CallbackQueryHandler(notify_menu,      pattern="^notify_menu$"))
     application.add_handler(CallbackQueryHandler(notify_menu,      pattern="^notify$"))
-    application.add_handler(CallbackQueryHandler(notify_setup,     pattern="^notify_setup$"))
-    application.add_handler(CallbackQueryHandler(notify_subscribe, pattern="^notify_stream_\\d+$"))
     application.add_handler(CallbackQueryHandler(notify_toggle,    pattern="^notify_toggle_\\w+$"))
+    # Мои предметы (маголего)
+    application.add_handler(CallbackQueryHandler(my_subjects.open_my_subjects,
+                                                 pattern="^mysubj(_from_(deadlines|progress))?$"))
+    application.add_handler(CallbackQueryHandler(my_subjects.toggle, pattern="^mysubj_(common|el_\\d+)$"))
     # Дедлайны
     application.add_handler(CallbackQueryHandler(show_deadlines,             pattern="^deadlines$"))
     application.add_handler(CallbackQueryHandler(show_subject_card,          pattern="^deadlines_subj_\\d+$"))
     application.add_handler(CallbackQueryHandler(show_deadline_chart,        pattern="^deadlines_chart$"))
     application.add_handler(CallbackQueryHandler(open_deadlines_from_digest, pattern="^deadlines_open$"))
-    application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify|progress)$"))
+    application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify|progress|mysubj)$"))
     # Мой прогресс
     application.add_handler(CallbackQueryHandler(progress.show_progress,     pattern="^progress$"))
     application.add_handler(CallbackQueryHandler(progress.progress_subject,  pattern="^prog_s_\\d+$"))

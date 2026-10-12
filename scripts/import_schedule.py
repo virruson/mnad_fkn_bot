@@ -11,6 +11,8 @@
 По умолчанию скрипт:
   - создаёт недостающие справочники (потоки, предметы, преподаватели, типы занятий)
   - вставляет/обновляет записи в Schedule (upsert по дате+времени+потоку+предмету)
+  - предмет с занятиями в потоке «Маголего» помечает маголего (subjects.is_elective = true;
+    обратно в false не сбрасывает). Предмет и в общем потоке, и в маголего — WARNING
   - НЕ удаляет ничего из БД
 
 --dry-run     — ничего не пишет в БД, только показывает, что было бы сделано
@@ -32,6 +34,7 @@ from bot.models import Stream, Subject, Teacher, LessonType, Schedule
 
 DEFAULT_LESSON_TYPE = "Занятие"
 DEFAULT_STREAM = "Общий поток"
+ELECTIVE_STREAM = "Маголего"
 
 
 def get_or_create(session, model, defaults=None, **kwargs):
@@ -92,8 +95,9 @@ def is_for_review(row):
 
 def import_rows(rows, dry_run=False):
     session = SessionLocal()
-    stats = {'created': 0, 'updated': 0, 'skipped': 0}
+    stats = {'created': 0, 'updated': 0, 'skipped': 0, 'electives': [], 'warnings': []}
     review = []
+    streams_of = {}   # предмет → {True (маголего), False (общий)}
 
     try:
         for row in rows:
@@ -115,6 +119,11 @@ def import_rows(rows, dry_run=False):
 
             stream, _ = get_or_create(session, Stream, name=stream_name)
             subject, _ = get_or_create(session, Subject, name=row['subject'])
+            is_elective = stream_name == ELECTIVE_STREAM
+            streams_of.setdefault(subject.name, set()).add(is_elective)
+            if is_elective and not subject.is_elective:
+                subject.is_elective = True
+                stats['electives'].append(subject.name)
             lesson_type, _ = get_or_create(session, LessonType, name=lesson_type_name)
             teacher, _ = get_or_create(
                 session, Teacher,
@@ -154,6 +163,9 @@ def import_rows(rows, dry_run=False):
                     meeting_link=row.get('meeting_link') or row.get('zoom_link'),
                 ))
                 stats['created'] += 1
+
+        stats['warnings'] = [f"«{name}» есть и в общем потоке, и в маголего — проверьте таблицу"
+                             for name, kinds in sorted(streams_of.items()) if len(kinds) > 1]
 
         if dry_run:
             session.rollback()
@@ -198,6 +210,10 @@ def main():
     print(f"Создано: {stats['created']}, обновлено: {stats['updated']}, "
           f"пропущено (нет времени): {stats['skipped']}")
     print(f"Помечено для ручной проверки: {len(review)}")
+    for name in stats['electives']:
+        print(f"  + маголего: {name}")
+    for warning in stats['warnings']:
+        print(f"  WARNING {warning}")
 
     if args.review_out:
         write_review(review, args.review_out)

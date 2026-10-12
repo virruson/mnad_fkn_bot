@@ -11,6 +11,9 @@ from telegram.ext import ContextTypes
 from bot.handlers.auth import auth_service
 from bot.models import Deadline, Subject
 from bot.services import deadline_chart
+from bot.services.selection import (
+    get_available_electives, get_selection_by_telegram_id, visible_deadlines, visible_subjects,
+)
 from bot.services.deadlines import (
     build_subject_buttons,
     get_screen_subjects,
@@ -39,20 +42,29 @@ async def show_deadlines(update: Update, context: ContextTypes.DEFAULT_TYPE, new
         await show_screen(update, context, "🔐 Сначала авторизуйтесь.", new_message=new_message)
         return
 
+    from bot.handlers.my_subjects import choose_electives_hint, empty_text, entry_button
+
     now = now_msk()
     db = SessionLocal()
     try:
-        subjects = get_screen_subjects(db, now.date())
+        selection = get_selection_by_telegram_id(db, update.effective_user.id)
+        subjects = visible_subjects(get_screen_subjects(db, now.date()), selection)
         deadlines = get_subject_deadlines(db, [s.id for s in subjects])
         buttons = build_subject_buttons(subjects, deadlines, now)
+        hint = choose_electives_hint(selection, get_available_electives(db, now.date()))
     finally:
         db.close()
 
-    keyboard = [CHART_BUTTON] + [[InlineKeyboardButton(text, callback_data=f"deadlines_subj_{sid}")]
-                                 for sid, text in buttons]
+    if selection.is_empty:
+        text, keyboard = empty_text("⏳ <b>Дедлайны</b>"), [entry_button('deadlines')]
+    else:
+        text = render_deadlines_screen(bool(buttons))
+        keyboard = ([CHART_BUTTON] if buttons else []) + [
+            [InlineKeyboardButton(t, callback_data=f"deadlines_subj_{sid}")] for sid, t in buttons]
+        if hint:
+            keyboard.append(entry_button('deadlines', "📚 Выбрать маголего"))
     keyboard.append(MAIN_MENU_BUTTON)
-    await show_screen(update, context, render_deadlines_screen(bool(buttons)),
-                      new_message=new_message,
+    await show_screen(update, context, text, new_message=new_message,
                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
@@ -66,6 +78,7 @@ async def open_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Кнопка «Открыть …» под объявлением 📣: объявление остаётся, раздел открывается новым экраном."""
     from bot.handlers.notifications import notify_menu
     from bot.handlers.progress import show_progress
+    from bot.handlers.my_subjects import open_my_subjects
     from bot.handlers.schedule import show_schedule
     from bot.utils.ui import FORCE_NEW_KEY
 
@@ -79,6 +92,8 @@ async def open_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await notify_menu(update, context)
     elif section == "progress":
         await show_progress(update, context)
+    elif section == "mysubj":
+        await open_my_subjects(update, context, origin='main')
     else:  # schedule
         await query.answer()
         await show_schedule(update, context)
@@ -120,6 +135,7 @@ async def show_deadline_chart(update: Update, context: ContextTypes.DEFAULT_TYPE
     db = SessionLocal()
     try:
         deadlines = db.query(Deadline).options(joinedload(Deadline.subject)).all()
+        deadlines = visible_deadlines(deadlines, get_selection_by_telegram_id(db, update.effective_user.id))
         in_window, later = deadline_chart.split_items(deadlines, now)
         if in_window:
             caption = deadline_chart.render_caption(in_window, later, today)

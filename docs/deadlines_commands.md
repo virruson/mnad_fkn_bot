@@ -47,6 +47,7 @@ git commit -am "Дедлайны" && git push
 - `"weights"` у предмета — веса для накопа: `{"hw": 0.5, "quiz": 0.2, "exam": 0.3}`; ключи `hw | quiz | test | project | exam` или одна активность `"hw:№1"`; сумма 1.0, иначе WARNING и веса не грузятся
 - `"progress"` у дедлайна: `"hidden"` — не показывать в прогрессе (жёсткие сроки, пересдачи), `"bonus"` — бонус, вне накопа; без поля — обычная активность
 - `type` `Проект` — новый тип (🛠), например проект RL
+- `"elective": true` у предмета — маголего, которого ещё нет в расписании (из расписания маголего определяется само: поток «Маголего»)
 
 ## Вручную на сервере
 
@@ -81,4 +82,4 @@ PY
 docker-compose exec bot python -m scripts.announce --text "В разделе «Дедлайны» появилась <b>ВКР</b>:\nвсе этапы и сроки в одном месте." --button deadlines --dry-run
 docker-compose exec bot python -m scripts.announce --text "..." --button deadlines   # отправить
 ```
-`--button` необязателен: `deadlines` / `schedule` / `notify` / `progress`. `--silent` — без звука.
+`--button` необязателен: `deadlines` / `schedule` / `notify` / `progress` / `mysubj`. `--silent` — без звука.

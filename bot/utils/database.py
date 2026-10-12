@@ -32,16 +32,15 @@ def get_db():
 
 # ===== Функции для работы с расписанием =====
 
-def get_today_schedule(db, stream_name=None):
-    """
-    Получить расписание на сегодня
-    Если stream_name указан - только для конкретного потока
-    Если stream_name не указан - для всех потоков
+def _schedule_query(db, selection=None):
+    """Занятия с именами предмета/преподавателя/типа/потока.
+
+    selection — выбор студента из «📚 Мои предметы» (bot.services.selection);
+    None — без фильтра.
     """
     from bot.models import Schedule, Subject, Teacher, LessonType, Stream
-    
-    today = datetime.now().date()
-    
+    from bot.services.selection import subject_filter
+
     query = db.query(
         Schedule,
         Subject.name.label('subject_name'),
@@ -58,91 +57,37 @@ def get_today_schedule(db, stream_name=None):
         LessonType, Schedule.lesson_type_id == LessonType.id
     ).join(
         Stream, Schedule.stream_id == Stream.id
-    ).filter(
-        Schedule.lesson_date == today
     )
-    
-    if stream_name:
-        query = query.filter(Stream.name == stream_name)
-    
-    return query.order_by(Schedule.lesson_time).all()
+    if selection is not None:
+        query = query.filter(subject_filter(selection))
+    return query
 
-def get_schedule_by_date(db, date, stream_name=None):
-    """
-    Получить расписание на указанную дату
-    date: объект date или строка в формате 'YYYY-MM-DD'
-    """
-    from bot.models import Schedule, Subject, Teacher, LessonType, Stream
-    
-    query = db.query(
-        Schedule,
-        Subject.name.label('subject_name'),
-        Teacher.last_name,
-        Teacher.first_name,
-        Teacher.middle_name,
-        LessonType.name.label('lesson_type_name'),
-        Stream.name.label('stream_name')
-    ).join(
-        Subject, Schedule.subject_id == Subject.id
-    ).join(
-        Teacher, Schedule.teacher_id == Teacher.id
-    ).join(
-        LessonType, Schedule.lesson_type_id == LessonType.id
-    ).join(
-        Stream, Schedule.stream_id == Stream.id
-    ).filter(
-        Schedule.lesson_date == date
-    )
-    
-    if stream_name:
-        query = query.filter(Stream.name == stream_name)
-    
-    return query.order_by(Schedule.lesson_time).all()
 
-def get_week_schedule(db, stream_name=None):
-    """
-    Получить расписание на текущую неделю (пн-вс)
-    """
-    from bot.models import Schedule, Subject, Teacher, LessonType, Stream
+def get_schedule_between(db, date_from, date_to, selection=None):
+    """Расписание за период (включительно), по дате и времени."""
+    from bot.models import Schedule
+    return (_schedule_query(db, selection)
+            .filter(Schedule.lesson_date.between(date_from, date_to))
+            .order_by(Schedule.lesson_date, Schedule.lesson_time).all())
+
+
+def get_schedule_by_date(db, date, selection=None):
+    """Расписание на дату."""
+    return get_schedule_between(db, date, date, selection)
+
+
+def get_today_schedule(db, selection=None):
+    """Расписание на сегодня."""
+    return get_schedule_by_date(db, datetime.now().date(), selection)
+
+
+def get_week_schedule(db, selection=None):
+    """Расписание на текущую неделю (пн-вс)."""
     from datetime import timedelta
-    
     today = datetime.now().date()
-    # Находим понедельник текущей недели
     monday = today - timedelta(days=today.weekday())
-    # Находим воскресенье
-    sunday = monday + timedelta(days=6)
-    
-    query = db.query(
-        Schedule,
-        Subject.name.label('subject_name'),
-        Teacher.last_name,
-        Teacher.first_name,
-        Teacher.middle_name,
-        LessonType.name.label('lesson_type_name'),
-        Stream.name.label('stream_name')
-    ).join(
-        Subject, Schedule.subject_id == Subject.id
-    ).join(
-        Teacher, Schedule.teacher_id == Teacher.id
-    ).join(
-        LessonType, Schedule.lesson_type_id == LessonType.id
-    ).join(
-        Stream, Schedule.stream_id == Stream.id
-    ).filter(
-        Schedule.lesson_date.between(monday, sunday)
-    )
-    
-    if stream_name:
-        query = query.filter(Stream.name == stream_name)
-    
-    return query.order_by(Schedule.lesson_date, Schedule.lesson_time).all()
+    return get_schedule_between(db, monday, monday + timedelta(days=6), selection)
 
-def get_streams(db):
-    """Получить список потоков для меню (без устаревших '1 поток'/'2 поток')"""
-    from bot.models import Stream
-    return db.query(Stream).filter(
-        Stream.name.notin_(['1 поток', '2 поток'])
-    ).order_by(Stream.name).all()
 
 def format_schedule_message(schedules, title=None):
     """

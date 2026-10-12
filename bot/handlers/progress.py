@@ -26,6 +26,7 @@ from bot.handlers.auth import auth_service
 from bot.models import Deadline, Subject, User, UserProgress
 from bot.services import progress as P
 from bot.services.deadlines import build_subject_buttons, get_screen_subjects, get_subject_deadlines, now_msk
+from bot.services.selection import get_available_electives, get_selection, is_visible
 from bot.utils.database import SessionLocal
 from bot.utils.ui import show_screen
 
@@ -113,15 +114,21 @@ async def show_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
 
+    from bot.handlers.my_subjects import choose_electives_hint, empty_text, entry_button
+
     now = now_msk()
     db = SessionLocal()
     try:
         user = _user(db, update.effective_user.id)
-        # Набор — как в «Дедлайнах» + все предметы с активностями (прошедший модуль не пропадает)
+        selection = get_selection(db, user)
+        # Набор — как в «Дедлайнах» + все предметы с активностями (прошедший модуль не пропадает),
+        # только отмеченные в «📚 Мои предметы»; отметки по снятым маголего не удаляются
         subjects = {s.id: s for s in get_screen_subjects(db, now.date())}
         for s in (db.query(Subject).join(Deadline, Deadline.subject_id == Subject.id)
                   .filter(Deadline.progress_role != 'hidden').distinct()):
             subjects.setdefault(s.id, s)
+        subjects = {sid: s for sid, s in subjects.items() if is_visible(s, selection)}
+        hint = choose_electives_hint(selection, get_available_electives(db, now.date()))
         deadlines = get_subject_deadlines(db, subjects)
         order = build_subject_buttons(subjects.values(), deadlines, now, mark_urgent=False)
         all_ids = [d.id for ds in deadlines.values() for d in ds]
@@ -132,8 +139,13 @@ async def show_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
+    text = P.render_list_screen(lines)
+    if selection.is_empty:
+        text, buttons = empty_text("📈 <b>Мой прогресс</b>"), [entry_button('progress')]
+    elif hint:
+        buttons.append(entry_button('progress', "📚 Выбрать маголего"))
     buttons.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_menu")])
-    await show_screen(update, context, P.render_list_screen(lines),
+    await show_screen(update, context, text,
                       reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
 
 

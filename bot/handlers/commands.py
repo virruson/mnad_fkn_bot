@@ -13,7 +13,6 @@ from bot.handlers.schedule import (
     schedule_week_callback,
     schedule_next_week_callback,
     schedule_month_callback,
-    show_today_schedule
 )
 from bot.handlers.auth import auth_service, login_start, logout as auth_logout
 from bot.utils.ui import show_screen
@@ -137,9 +136,5 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await schedule_next_week_callback(update, context)
     elif query.data == "schedule_month":
         await schedule_month_callback(update, context)
-    elif query.data == "schedule_choose_stream":
-        await show_schedule_callback(update, context)
-    elif query.data.startswith("stream_"):
-        await show_today_schedule(update, context)
     else:
         await query.edit_message_text(text=f"⚙️ Функция {query.data} в разработке")

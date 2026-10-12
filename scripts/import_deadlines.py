@@ -36,6 +36,8 @@ weights — веса для накопа в «📈 Мой прогресс»: к
 progress — роль строки в прогрессе: пусто (обычная активность), bonus (вне накопа), hidden
 (не показывать: жёсткие сроки, пересдачи). В Google Sheet — колонка «Прогресс» вкладки «Дедлайны».
 Карточка дедлайнов, утренняя рассылка и график это поле не учитывают.
+elective — "elective": true у предмета: маголего, которого ещё нет в расписании (в Google Sheet —
+колонка «Маголего» вкладки «Формулы», любое непустое значение). Обратно в false импорт не сбрасывает.
 
 ВАЖНО: дедлайн, по которому у студентов есть отметки, не переименовывать — у него ключ
 upsert, переименование = удаление старого + новый (отметки пропадут). Править дату и время.
@@ -94,7 +96,8 @@ def fetch_json(path):
         TAB_MODULES: [[m.get('name') or '', m.get('start') or '', m.get('end') or '']
                       for m in data.get('modules', [])],
         TAB_FORMULAS: [[s.get('name') or '', s.get('formula') or '', s.get('short_name') or '',
-                        'create' if s.get('create') else '', _weights_cell(s.get('weights'))]
+                        'create' if s.get('create') else '', _weights_cell(s.get('weights')),
+                        'elective' if s.get('elective') else '']
                        for s in data.get('subjects', [])],
         TAB_DEADLINES: [[d.get('subject') or '', d.get('type') or '', d.get('title') or '',
                          d.get('date') or '', d.get('time') or '', d.get('progress') or '']
@@ -200,7 +203,7 @@ class Importer:
 
     def import_formulas(self, rows):
         for i, row in enumerate(rows, start=2):
-            name, formula, short_name, create, weights_raw = cells(row, 5)
+            name, formula, short_name, create, weights_raw, elective = cells(row, 6)
             if not name:
                 continue
             if create and name not in self.subjects:   # предмет не из расписания (ВКР)
@@ -214,7 +217,8 @@ class Importer:
             if formula.lower().startswith('итог'):   # «Итог = …» → только правая часть
                 formula = formula.split('=', 1)[-1].strip()
             values = {'grading_formula': formula or subject.grading_formula,
-                      'short_name': short_name or subject.short_name}
+                      'short_name': short_name or subject.short_name,
+                      'is_elective': subject.is_elective or bool(elective)}   # в false не сбрасываем
             if weights_raw:
                 try:
                     weights = parse_weights(weights_raw)
