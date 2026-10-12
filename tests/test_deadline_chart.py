@@ -76,6 +76,15 @@ def test_render_png_and_cache_key():
     assert C.cache_key(in_window, NOW.date()) != key       # данные поменялись — новая картинка
 
 
+def test_done_removed_from_chart_and_all_done_text():
+    from bot.services.deadlines import without_done
+    hw1, hard1 = DATA[1], DATA[2]
+    in_window, later = C.split_items(without_done(DATA, [hw1]), NOW)
+    assert "ДЗ №1" not in [C.what_label(it) for it in in_window]       # ни основной, ни штрафной полосы
+    assert all(it.deadline is not hard1 and it.hard is not hard1 for it in in_window)
+    assert C.render_empty(later, all_done=True).startswith("✅ <b>Всё на 2 недели сдано</b>\n\n<b>Позже:</b>")
+
+
 if __name__ == '__main__':
     for name, fn in list(globals().items()):
         if name.startswith('test_'):

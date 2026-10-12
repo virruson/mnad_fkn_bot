@@ -10,7 +10,7 @@ from types import SimpleNamespace as NS
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bot.services.deadlines import (
-    build_subject_buttons, display_name, render_deadline_digest, render_subject_card,
+    build_subject_buttons, display_name, done_ids, render_deadline_digest, render_subject_card,
 )
 
 NOW = datetime(2026, 9, 30, 12, 0)  # ср 30.09, как в docs/ui_deadlines.md
@@ -20,8 +20,11 @@ def subj(id, name, short=None, formula=None):
     return NS(id=id, name=name, short_name=short, grading_formula=formula)
 
 
+_ids = iter(range(1, 10000))
+
+
 def dl(subject, kind, title, day, due_time=None):
-    return NS(subject_id=subject.id, subject=subject, kind=kind, title=title,
+    return NS(id=next(_ids), subject_id=subject.id, subject=subject, kind=kind, title=title,
               due_date=date(2026, *day), due_time=due_time)
 
 
@@ -51,7 +54,7 @@ def test_card_hides_old_past_and_empty_subject():
     hws = [dl(DB, 'hw', f"№{i}", (9, i)) for i in range(1, 7)] + [dl(DB, 'hw', '№7', (10, 20))]
     card = render_subject_card(DB, hws, NOW)
     assert "№3 · <b>03.09</b>" not in card and "<s>№4 · <b>04.09</b></s>" in card
-    assert "<i>ещё 3 прошедших</i>" in card
+    assert "<i>ещё 3 закрытых</i>" in card
     assert render_subject_card(RL, [], NOW) == "<b>Обучение с подкреплением</b>\n\n<i>нет информации</i>"
 
 
@@ -111,6 +114,52 @@ def test_digest_only_4_2_1_days():
         "<b>Через 4 дня</b> · вс 04.10\nВременные ряды — ДЗ №2\nОбучение с подкреплением — квиз/КР №1"
     )
     assert render_deadline_digest(deadlines, date(2026, 9, 20)) is None
+
+
+RECSYS = subj(6, "RecSys", formula="0.29·ДЗ_1 + 0.29·ДЗ_2 + 0.42·ЭКЗ")
+
+
+def test_done_in_card_and_hard_pair():
+    hw1 = dl(PMO, 'hw', '№1', (10, 14))
+    hard1 = dl(PMO, 'hw', '№1 жёсткий (−1 балл/сутки после 14.10)', (10, 21))
+    hw2 = dl(PMO, 'hw', '№2', (10, 28))
+    now = datetime(2026, 10, 12, 12, 0)
+    card = render_subject_card(PMO, [hw1, hard1, hw2], now, done=[hw1])
+    assert ("📝 <b>ДЗ</b>\n✅ <s>№1 · <b>14.10</b></s>\n"
+            "<s>№1 жёсткий (−1 балл/сутки после 14.10) · <b>21.10</b></s>\n"
+            "№2 · <b>28.10</b> · <i>осталось 16 дн</i>") in card
+    assert "✅" not in render_subject_card(PMO, [hw1, hard1, hw2], now)   # другой студент — как раньше
+
+
+def test_done_milestone_and_hiding_closed():
+    vkr = subj(5, "ВКР", "📜 ВКР")
+    m = dl(vkr, 'milestone', 'Выбор научных руководителей', (10, 20))
+    assert render_subject_card(vkr, [m], NOW, done=[m]).endswith(
+        "✅ <s><b>20.10</b> · Выбор научных руководителей</s>")
+    hws = [dl(DB, 'hw', f"№{i}", (10, i)) for i in range(1, 7)]     # все в будущем, 1 и 2 сданы
+    card = render_subject_card(DB, hws, NOW, done=hws[:2])
+    assert "№1 ·" not in card and "№2 ·" not in card and "<i>ещё 2 закрытых</i>" in card
+
+
+def test_done_ids_cases():
+    hw1 = dl(PMO, 'hw', '№1', (10, 4))
+    hard1 = dl(PMO, 'hw', '№1 жёсткий (−1 балл/сутки после 04.10)', (10, 11))
+    bonus = dl(PMO, 'hw', 'Practice 3 (бонус)', (10, 4))
+    vkr = subj(5, "ВКР", "📜 ВКР")
+    m = dl(vkr, 'milestone', 'Выбор научных руководителей', (10, 20))
+    all_dl = [hw1, hard1, bonus, m]
+    assert done_ids(all_dl, [hw1]) == {hw1.id, hard1.id}
+    assert done_ids(all_dl, [bonus]) == {bonus.id}
+    assert done_ids(all_dl, [m]) == {m.id}
+    assert done_ids(all_dl, []) == set()
+
+
+def test_done_does_not_make_subject_urgent():
+    hw = dl(RECSYS, 'hw', '№1', (10, 1))              # завтра → «❗»
+    deadlines = {6: [hw], 2: [dl(TS, 'hw', '№2', (10, 4))]}
+    assert [t for _, t in build_subject_buttons([RECSYS, TS], deadlines, NOW)] == ["❗ RecSys", "Временные ряды"]
+    assert [t for _, t in build_subject_buttons([RECSYS, TS], deadlines, NOW, done=[hw])] == [
+        "Временные ряды", "RecSys"]
 
 
 if __name__ == '__main__':

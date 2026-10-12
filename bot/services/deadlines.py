@@ -10,7 +10,7 @@ from html import escape
 
 import pytz
 
-from bot.models import Deadline, LessonType, Module, Schedule, Subject
+from bot.models import Deadline, LessonType, Module, Schedule, Subject, User, UserProgress
 
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 END_OF_DAY = time(23, 59)
@@ -124,18 +124,19 @@ def get_subject_deadlines(db, subject_ids) -> dict:
 # ---------------------------------------------------------------------------
 
 def build_subject_buttons(subjects, deadlines_by_subject: dict, now: datetime,
-                          mark_urgent: bool = True) -> list:
+                          mark_urgent: bool = True, done: list = ()) -> list:
     """
     [(subject_id, текст_кнопки), ...] в порядке: срочные, дальше по ближайшему
     дедлайну, предметы без будущих дедлайнов — в конце. ВКР (только этапы) всегда
     последняя: «❗» получает, но место не меняет. mark_urgent=False — тот же порядок
-    без «❗» («Мой прогресс»).
+    без «❗» («Мой прогресс»). done — сданное студентом: не делает предмет срочным
+    и не участвует в сортировке.
     """
     items = []
     for s in subjects:
         own = deadlines_by_subject.get(s.id, [])
         pinned_last = bool(own) and all(d.kind == 'milestone' for d in own)
-        upcoming = [d for d in own if not is_past(d, now)]
+        upcoming = [d for d in without_done(own, done) if not is_past(d, now)]
         nearest = min((due_at(d) for d in upcoming), default=None)
         urgent = any(is_urgent(d, now) for d in upcoming)
         items.append((pinned_last, not urgent, nearest is None, nearest or datetime.max,
@@ -160,12 +161,17 @@ def _format_due(d: Deadline) -> str:
     return s
 
 
-def format_deadline_line(d: Deadline, now: datetime) -> str:
+def format_deadline_line(d: Deadline, now: datetime, marked: set = frozenset(),
+                         closed: set = frozenset()) -> str:
+    """marked — id, которые студент отметил сданными («✅» + зачёркнуто);
+    closed — они же плюс их пары «жёсткий» (просто зачёркнуто, без «❗» и «осталось»)."""
     parts = [escape(d.title), f"<b>{_format_due(d)}</b>"]
     if d.kind == 'milestone':
         parts.reverse()  # у этапов ВКР длинные названия — дата впереди
     base = " · ".join(filter(None, parts))
-    if is_past(d, now):
+    if d.id in marked:
+        return f"✅ <s>{base}</s>"
+    if d.id in closed or is_past(d, now):
         return f"<s>{base}</s>"
     left = days_left(d, now.date())
     remain = "сегодня" if left == 0 else f"осталось {left} дн"
@@ -173,19 +179,24 @@ def format_deadline_line(d: Deadline, now: datetime) -> str:
     return f"❗ {line}" if left < URGENT_DAYS else line
 
 
-def _render_block(deadlines: list, now: datetime) -> list:
+def _render_block(deadlines: list, now: datetime, marked: set = frozenset(),
+                  closed: set = frozenset()) -> list:
     if not deadlines:
         return [NO_INFO]
-    past = [d for d in deadlines if is_past(d, now)]
-    hidden = max(0, min(len(past), len(deadlines) - BLOCK_MAX_LINES))
-    shown = deadlines[hidden:]  # список отсортирован, самые старые прошедшие — в начале
-    lines = [format_deadline_line(d, now) for d in shown]
+    # «Закрытые» — прошедшие и сданные; лишние строки прячем, начиная с самых старых закрытых
+    finished = [d for d in deadlines if d.id in closed or is_past(d, now)]  # список отсортирован по сроку
+    hidden = max(0, min(len(finished), len(deadlines) - BLOCK_MAX_LINES))
+    hidden_ids = {id(d) for d in finished[:hidden]}
+    lines = [format_deadline_line(d, now, marked, closed) for d in deadlines if id(d) not in hidden_ids]
     if hidden:
-        lines.append(f"<i>ещё {hidden} прошедших</i>")
+        lines.append(f"<i>ещё {hidden} закрытых</i>")
     return lines
 
 
-def render_subject_card(subject: Subject, deadlines: list, now: datetime) -> str:
+def render_subject_card(subject: Subject, deadlines: list, now: datetime, done: list = ()) -> str:
+    """done — дедлайны, которые студент отметил сданными в «📈 Мой прогресс»."""
+    marked = {d.id for d in done}
+    closed = done_ids(deadlines, done)
     title = f"<b>{escape(subject.name)}</b>"
     if not deadlines:  # все блоки пусты — одна строка (+ формула, если есть)
         parts = [title, NO_INFO]
@@ -204,7 +215,7 @@ def render_subject_card(subject: Subject, deadlines: list, now: datetime) -> str
             continue
         if only_milestones and kind != 'milestone':
             continue  # у ВКР нет ДЗ/квизов/экзамена — пустые блоки не нужны
-        parts.append("\n".join([f"{icon} <b>{label}</b>", *_render_block(by_kind[kind], now)]))
+        parts.append("\n".join([f"{icon} <b>{label}</b>", *_render_block(by_kind[kind], now, marked, closed)]))
 
     if subject.grading_formula or not only_milestones:
         parts.append(_render_formula(subject))
@@ -242,11 +253,40 @@ def hard_base_key(d: Deadline):
     return d.subject_id, d.kind, d.title.split(HARD_SUFFIX, 1)[0].strip()
 
 
-def without_done(deadlines: list, done: list) -> list:
+def done_ids(deadlines: list, done) -> set:
+    """id сданных студентом (done) среди deadlines плюс жёстких сроков к ним («№1» → «№1 жёсткий …»)."""
+    marked = {d.id for d in done}
+    keys = {(d.subject_id, d.kind, d.title) for d in done}
+    return {d.id for d in deadlines if d.id in marked or hard_base_key(d) in keys}
+
+
+def without_done(deadlines: list, done) -> list:
     """Дедлайны без сданных студентом (done) и без жёстких сроков к сданным заданиям."""
-    done_ids = {d.id for d in done}
-    done_keys = {(d.subject_id, d.kind, d.title) for d in done}
-    return [d for d in deadlines if d.id not in done_ids and hard_base_key(d) not in done_keys]
+    closed = done_ids(deadlines, done)
+    return [d for d in deadlines if d.id not in closed]
+
+
+def get_done_by_user(db, user_ids) -> dict:
+    """{user_id: [Deadline, …]} — что студенты отметили сданным в «📈 Мой прогресс»."""
+    result = defaultdict(list)
+    if not user_ids:
+        return result
+    rows = (db.query(UserProgress.user_id, Deadline)
+            .join(Deadline, UserProgress.deadline_id == Deadline.id)
+            .filter(UserProgress.done_at.isnot(None), UserProgress.user_id.in_(list(user_ids))))
+    for user_id, d in rows:
+        result[user_id].append(d)
+    return result
+
+
+def get_done_deadlines(db, user_id) -> list:
+    """Сданное одним студентом; user_id=None (не авторизован / не найден) — пусто."""
+    return get_done_by_user(db, [user_id] if user_id else []).get(user_id, [])
+
+
+def get_done_for_telegram_id(db, telegram_id) -> list:
+    user = db.query(User).filter(User.telegram_id == str(telegram_id)).first()
+    return get_done_deadlines(db, user.id if user else None)
 
 
 def render_deadline_digest(deadlines: list, today: date):

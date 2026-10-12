@@ -155,8 +155,10 @@ def render_caption(in_window: list, later: list, today: date) -> str:
     return "\n".join(lines + _later_block(later))
 
 
-def render_empty(later: list) -> str:
-    text = "⏳ <b>Дедлайны на 2 недели</b>\n<i>нет информации</i>"
+def render_empty(later: list, all_done: bool = False) -> str:
+    """Пустое окно. all_done — в окне что-то было, но студент всё сдал."""
+    text = ("✅ <b>Всё на 2 недели сдано</b>" if all_done
+            else "⏳ <b>Дедлайны на 2 недели</b>\n<i>нет информации</i>")
     block = _later_block(later)
     return text + ("\n\n" + "\n".join(block) if block else "")
 

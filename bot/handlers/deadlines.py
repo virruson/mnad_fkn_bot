@@ -16,6 +16,8 @@ from bot.services.selection import (
 )
 from bot.services.deadlines import (
     build_subject_buttons,
+    get_done_for_telegram_id,
+    without_done,
     get_screen_subjects,
     get_subject_deadlines,
     now_msk,
@@ -50,7 +52,8 @@ async def show_deadlines(update: Update, context: ContextTypes.DEFAULT_TYPE, new
         selection = get_selection_by_telegram_id(db, update.effective_user.id)
         subjects = visible_subjects(get_screen_subjects(db, now.date()), selection)
         deadlines = get_subject_deadlines(db, [s.id for s in subjects])
-        buttons = build_subject_buttons(subjects, deadlines, now)
+        done = get_done_for_telegram_id(db, update.effective_user.id)   # сданное не делает предмет срочным
+        buttons = build_subject_buttons(subjects, deadlines, now, done=done)
         hint = choose_electives_hint(selection, get_available_electives(db, now.date()))
     finally:
         db.close()
@@ -114,7 +117,8 @@ async def show_subject_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = "<i>нет информации</i>"
         else:
             deadlines = get_subject_deadlines(db, [subject_id])[subject_id]
-            text = render_subject_card(subject, deadlines, now_msk())
+            done = get_done_for_telegram_id(db, update.effective_user.id)
+            text = render_subject_card(subject, deadlines, now_msk(), done=done)
     finally:
         db.close()
 
@@ -136,12 +140,15 @@ async def show_deadline_chart(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         deadlines = db.query(Deadline).options(joinedload(Deadline.subject)).all()
         deadlines = visible_deadlines(deadlines, get_selection_by_telegram_id(db, update.effective_user.id))
+        had_in_window = bool(deadline_chart.split_items(deadlines, now)[0])
+        # сданное (и жёсткий срок к нему) — ни на картинке, ни в подписи
+        deadlines = without_done(deadlines, get_done_for_telegram_id(db, update.effective_user.id))
         in_window, later = deadline_chart.split_items(deadlines, now)
         if in_window:
             caption = deadline_chart.render_caption(in_window, later, today)
             key = deadline_chart.cache_key(in_window, today)
         else:
-            empty_text = deadline_chart.render_empty(later)
+            empty_text = deadline_chart.render_empty(later, all_done=had_in_window)
     finally:
         db.close()
 

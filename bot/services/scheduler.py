@@ -14,8 +14,8 @@ import pytz
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.utils.database import SessionLocal, get_schedule_by_date
-from bot.models import Deadline, Subject, User, UserProgress
-from bot.services.deadlines import get_digest_deadlines, render_deadline_digest, without_done
+from bot.models import Subject, User
+from bot.services.deadlines import get_digest_deadlines, get_done_by_user, render_deadline_digest, without_done
 from bot.services.selection import get_selection, get_selection_by_telegram_id, is_visible, visible_deadlines
 
 logger = logging.getLogger(__name__)
@@ -245,12 +245,7 @@ async def send_deadline_digest(bot, today) -> int:
             logger.warning(f"[NOTIFY] deadline_digest {today}: дедлайнов на 4/2/1 день нет")
             return 0
         users = db.query(User).filter(User.deadlines_enabled == True, User.is_verified == True).all()
-        done_by_user = {}
-        for user_id, d in (db.query(UserProgress.user_id, Deadline)
-                           .join(Deadline, UserProgress.deadline_id == Deadline.id)
-                           .filter(UserProgress.done_at.isnot(None),
-                                   UserProgress.user_id.in_([u.id for u in users]))):
-            done_by_user.setdefault(user_id, []).append(d)
+        done_by_user = get_done_by_user(db, [u.id for u in users])
         texts = []
         for u in users:
             own = without_done(visible_deadlines(deadlines, get_selection(db, u)), done_by_user.get(u.id, []))
