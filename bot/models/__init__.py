@@ -147,7 +147,9 @@ class User(Base):
     stream_id = Column(Integer, ForeignKey('streams.id', ondelete='SET NULL'), nullable=True)
     common_enabled = Column(Boolean, nullable=False, default=True, server_default='true',
                             comment='«Общие предметы» в «📚 Мои предметы»')
-    thanked_at = Column(DateTime, nullable=True, comment='Сказал «спасибо» в «💬 Обратной связи» (один раз)')
+    thanked_at = Column(DateTime, nullable=True, comment='Первое «спасибо» в «💬 Обратной связи»')
+    thanks_count = Column(Integer, nullable=False, default=0, server_default='0',
+                          comment='Сколько раз нажал сердечко')
     digest_enabled = Column(Boolean, default=False, nullable=False, comment='Расписание на день в 10:00')
     reminders_enabled = Column(Boolean, default=False, nullable=False, comment='Напоминание за 15 мин')
     deadlines_enabled = Column(Boolean, default=False, nullable=False, comment='Дедлайны за 4, 2, 1 дн')

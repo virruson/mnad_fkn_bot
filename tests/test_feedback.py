@@ -15,9 +15,17 @@ LETTER = ("привет! во первых хотела сказать спас�
 
 
 def test_thanks_label():
-    assert F.thanks_label(False, 0) == "🤍 Спасибо"
-    assert F.thanks_label(False, 23) == "🤍 Спасибо · 23"
-    assert F.thanks_label(True, 24) == "❤️ Спасибо · 24"
+    assert F.thanks_label(0, 0) == "🤍 Спасибо"
+    assert F.thanks_label(0, 23) == "🤍 Спасибо · 23"
+    assert F.thanks_label(7, 312) == "❤️ Спасибо · 312"
+
+
+def test_thanks_toasts_and_celebrations():
+    assert [F.thanks_toast(n) for n in (1, 2, 4, 5, 6, 10, 15)] == [
+        "Спасибо дошло до автора ❤️", "❤️ ×2", "❤️ ×4", "И тебе спасибо 😊", "❤️ ×6", "❤️ ×10", "❤️ ×15"]
+    assert [F.celebration(n) for n in (5, 9, 10, 11, 15, 20, 50)] == [None, None, "🤩", None, "😍", "🥰", "🏆"]
+    assert [F.celebration(n) for n in (55, 60, 90, 95)] == ["😍", "🥰", "🏆", "😍"]
+    assert [n for n in range(1, 120) if F.notify_author(n)] == [1, 10, 25, 50, 100]
 
 
 def test_quote_matches_mockup():
@@ -38,6 +46,7 @@ def test_author_message_escapes_and_keeps_text():
 def test_thanks_and_answer_messages():
     assert F.thanks_message("Анна Смирнова", "anna_smr", 24) == "❤️ Спасибо · Анна Смирнова (@anna_smr) · всего 24"
     assert F.thanks_message("Анна", None, 1) == "❤️ Спасибо · Анна · всего 1"
+    assert F.thanks_message("Анна Смирнова", "anna_smr", 312, 25) == "❤️ ×25 · Анна Смирнова (@anna_smr) · всего 312"
     ans = F.answer_message(datetime(2026, 10, 12, 9), LETTER, "Спасибо! <ок>")
     assert ans == ("💬 <b>Ответ автора</b>\nНа ваше сообщение от 12.10: "
                    "<i>«привет! во первых хотела сказать спасибо за бота…»</i>\n\n"

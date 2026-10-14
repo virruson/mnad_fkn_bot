@@ -16,9 +16,11 @@ import logging
 import re
 from datetime import timedelta
 
-from sqlalchemy import func
+from datetime import datetime
+
+from sqlalchemy import func, update as sql_update
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.error import Forbidden
+from telegram.error import BadRequest, Forbidden, RetryAfter
 from telegram.ext import ApplicationHandlerStop, ContextTypes, ConversationHandler
 
 from bot.handlers.auth import auth_service
@@ -41,8 +43,13 @@ def _user(db, telegram_id):
     return db.query(User).filter(User.telegram_id == str(telegram_id)).first()
 
 
+RENDER_KEY = "thanks_last_render"
+RENDER_EVERY = 1.0   # сек: на быстрых нажатиях экран не перерисовываем, иначе Telegram вернёт 429
+
+
 def _thanks_total(db) -> int:
-    return db.query(func.count(User.id)).filter(User.thanked_at.isnot(None)).scalar() or 0
+    """Всего сердечек у всех студентов."""
+    return db.query(func.coalesce(func.sum(User.thanks_count), 0)).scalar() or 0
 
 
 async def _not_authorized(update: Update, context) -> bool:
@@ -62,7 +69,7 @@ async def _render(update: Update, context, toast: str | None = None):
     db = SessionLocal()
     try:
         user = _user(db, update.effective_user.id)
-        label = F.thanks_label(bool(user and user.thanked_at), _thanks_total(db))
+        label = F.thanks_label(user.thanks_count if user else 0, _thanks_total(db))
     finally:
         db.close()
     if update.callback_query:
@@ -86,29 +93,61 @@ async def show_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _render(update, context)
 
 
+async def _delete_later(context):
+    chat_id, message_id = context.job.data
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        pass   # уже удалено или слишком старое — не важно
+
+
 async def thanks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """fb_thanks: первое нажатие — записать и сообщить автору без звука; повторное — только подсказка."""
+    """fb_thanks: каждое нажатие — +1 сердечко (docs/thanks_counter_developer.md)."""
     if await _not_authorized(update, context):
         return
+    query = update.callback_query
     tg = update.effective_user
     db = SessionLocal()
     try:
-        user = _user(db, tg.id)
-        first = user is not None and user.thanked_at is None
-        if first:
-            user.thanked_at = now_msk()
-            db.commit()
+        n = db.execute(sql_update(User).where(User.telegram_id == str(tg.id))
+                       .values(thanks_count=User.thanks_count + 1,
+                               thanked_at=func.coalesce(User.thanked_at, now_msk()))
+                       .returning(User.thanks_count)).scalar()
+        db.commit()
         total = _thanks_total(db)
     finally:
         db.close()
+    if n is None:
+        await query.answer()
+        return
 
-    if first:
+    if F.notify_author(n):
         try:
-            await context.bot.send_message(chat_id=F.chat_id(), text=F.thanks_message(tg.full_name, tg.username, total),
-                                           parse_mode='HTML', disable_notification=True)
+            await context.bot.send_message(chat_id=F.chat_id(), parse_mode='HTML', disable_notification=True,
+                                           text=F.thanks_message(tg.full_name, tg.username, total, n))
         except Exception as e:
             logger.error(f"[FEEDBACK] thanks → author FAILED: {e}")
-    await _render(update, context, F.THANKS_FIRST if first else F.THANKS_AGAIN)
+
+    toast = F.thanks_toast(n)
+    now = datetime.now().timestamp()
+    if now - context.user_data.get(RENDER_KEY, 0) < RENDER_EVERY:
+        await query.answer(toast)                    # число на кнопке обновится при следующем нажатии
+    else:
+        context.user_data[RENDER_KEY] = now
+        try:
+            await _render(update, context, toast)
+        except (RetryAfter, BadRequest) as e:        # 429 или «message is not modified» — не страшно
+            logger.warning(f"[FEEDBACK] thanks render skipped: {e}")
+
+    emoji = F.celebration(n)
+    if emoji:   # не экран: в SCREEN_MSG_KEY не пишем, через CELEBRATION_TTL секунд удаляем
+        try:
+            sent = await context.bot.send_message(chat_id=update.effective_chat.id, text=emoji,
+                                                  disable_notification=True)
+            context.job_queue.run_once(_delete_later, when=F.CELEBRATION_TTL,
+                                       data=(update.effective_chat.id, sent.message_id))
+        except Exception as e:
+            logger.warning(f"[FEEDBACK] celebration {n} skipped: {e}")
 
 
 # ---------------------------------------------------------------------------

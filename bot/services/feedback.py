@@ -20,7 +20,11 @@ INTRO = "Нашли ошибку в сроках или есть идея? На�
 NAME_WARNING = "Автор увидит ваше имя и почту."
 SENT = "✅ <b>Отправлено</b>\nСпасибо! Ответ автора придёт сюда, в этот чат."
 THANKS_FIRST = "Спасибо дошло до автора ❤️"
-THANKS_AGAIN = "Ваше спасибо уже засчитано"
+THANKS_FIVE = "И тебе спасибо 😊"
+# Пасхалки на 10, 15, 20 … сердечек: одно эмодзи крупно, исчезает через CELEBRATION_TTL секунд
+CELEBRATION = ["🤩", "😍", "🥰", "💖", "😻", "🫶", "💞", "🎉", "🏆"]
+CELEBRATION_TTL = 4
+AUTHOR_MILESTONES = {1, 10, 25, 50, 100}   # на какое по счёту сердечко студента писать автору
 NOT_DELIVERED_BLOCKED = "⚠️ Не доставлено: студент заблокировал бота"
 DELIVERED = "✓ доставлено"
 
@@ -48,9 +52,34 @@ def enabled() -> bool:
 # Экраны студента
 # ---------------------------------------------------------------------------
 
-def thanks_label(thanked: bool, total: int) -> str:
-    icon = "❤️" if thanked else "🤍"
+def thanks_label(my_count: int, total: int) -> str:
+    """🤍 — студент ещё не нажимал, ❤️ — нажимал; total — всего сердечек у всех студентов."""
+    icon = "❤️" if my_count else "🤍"
     return f"{icon} Спасибо · {total}" if total else f"{icon} Спасибо"
+
+
+def thanks_toast(n: int) -> str:
+    """Подсказка после n-го нажатия студента."""
+    if n == 1:
+        return THANKS_FIRST
+    if n == 5:
+        return THANKS_FIVE
+    return f"❤️ ×{n}"
+
+
+def celebration(n: int):
+    """Эмодзи на 10, 15, 20 …; после 🏆 (50) — по кругу с 😍. Иначе None."""
+    if n < 10 or n % 5:
+        return None
+    k = n // 5 - 2
+    if k < len(CELEBRATION):
+        return CELEBRATION[k]
+    loop = CELEBRATION[1:]
+    return loop[(k - len(CELEBRATION)) % len(loop)]
+
+
+def notify_author(n: int) -> bool:
+    return n in AUTHOR_MILESTONES
 
 
 def screen_text() -> str:
@@ -120,9 +149,10 @@ def author_message(feedback_id: int, name: str, username, email, context, text: 
             f"<i>Ответьте на это сообщение (reply), чтобы ответить студенту.</i>")
 
 
-def thanks_message(name: str, username, total: int) -> str:
+def thanks_message(name: str, username, total: int, n: int = 1) -> str:
     who = escape(name or "Без имени") + (f" (@{escape(username)})" if username else "")
-    return f"❤️ Спасибо · {who} · всего {total}"
+    head = "❤️ Спасибо" if n == 1 else f"❤️ ×{n}"
+    return f"{head} · {who} · всего {total}"
 
 
 def quote(text: str, limit: int = QUOTE_LEN) -> str:
