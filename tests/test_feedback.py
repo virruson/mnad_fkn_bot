@@ -62,8 +62,7 @@ def test_daily_limit():
 def test_input_screens():
     title = F.input_title('subject', "RecSys")
     assert title == "✏️ <b>Неточность: RecSys</b>"
-    assert F.input_prompt('subject', title).endswith("Автор увидит ваше имя и почту.\n/cancel — отмена")
+    assert F.input_prompt('subject', title).endswith("Автор увидит ваше имя и почту.")
     assert F.input_title('reply', feedback_id=12) == "✏️ <b>Ответ на обращение №12</b>"
     assert F.too_long("✏️ <b>Сообщение автору</b>", 1254) == (
-        "✏️ <b>Сообщение автору</b>\nСлишком длинно: 1254 из 1000 символов. Сократите и отправьте ещё раз.\n"
-        "/cancel — отмена")
+        "✏️ <b>Сообщение автору</b>\nСлишком длинно: 1254 из 1000 символов. Сократите и отправьте ещё раз.")

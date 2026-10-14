@@ -18,7 +18,6 @@ DEFAULT_CHAT_ID = -5024604118   # группа автора для обраще�
 TITLE = "💬 <b>Обратная связь</b>"
 INTRO = "Нашли ошибку в сроках или есть идея? Напишите — автор бота прочитает и ответит прямо здесь."
 NAME_WARNING = "Автор увидит ваше имя и почту."
-CANCEL_HINT = "/cancel — отмена"
 SENT = "✅ <b>Отправлено</b>\nСпасибо! Ответ автора придёт сюда, в этот чат."
 THANKS_FIRST = "Спасибо дошло до автора ❤️"
 THANKS_AGAIN = "Ваше спасибо уже засчитано"
@@ -75,17 +74,16 @@ def input_prompt(kind: str, title: str) -> str:
     else:
         body = ("Напишите одним сообщением, до 1000 символов. Например:\n"
                 "<i>«По RecSys срок ДЗ №1 перенесли на 21.10, 23:59»</i>")
-    return f"{title}\n{body}\n\n{NAME_WARNING}\n{CANCEL_HINT}"
+    return f"{title}\n{body}\n\n{NAME_WARNING}"
 
 
 def too_long(title: str, length: int) -> str:
     return (f"{title}\nСлишком длинно: {length} из {FEEDBACK_MAX_LEN} символов. "
-            f"Сократите и отправьте ещё раз.\n{CANCEL_HINT}")
+            f"Сократите и отправьте ещё раз.")
 
 
 def not_text(title: str) -> str:
-    return (f"{title}\nПринимается только текст. Если хотели показать скриншот — опишите словами, что на нём.\n"
-            f"{CANCEL_HINT}")
+    return f"{title}\nПринимается только текст. Если хотели показать скриншот — опишите словами, что на нём."
 
 
 def limit_until(recent: list, now: datetime):

@@ -92,7 +92,8 @@ def main():
                 MessageHandler(~filters.TEXT & ~filters.COMMAND, fb.write_not_text),
             ],
         },
-        fallbacks=[CommandHandler("cancel", fb.write_cancel)],
+        fallbacks=[CommandHandler("cancel", fb.write_cancel),
+                   CallbackQueryHandler(fb.write_cancel, pattern="^fb_cancel$")],
         per_message=False,
         allow_reentry=True,
         conversation_timeout=600,
@@ -156,6 +157,8 @@ def main():
     # Обратная связь
     application.add_handler(CallbackQueryHandler(fb.show_feedback, pattern="^fb$"))
     application.add_handler(CallbackQueryHandler(fb.thanks,        pattern="^fb_thanks$"))
+    application.add_handler(CallbackQueryHandler(fb.close_answer,  pattern="^fb_close$"))
+    application.add_handler(CallbackQueryHandler(fb.write_cancel,  pattern="^fb_cancel$"))  # ввод уже закрыт
     # Мой прогресс
     application.add_handler(CallbackQueryHandler(progress.show_progress,     pattern="^progress$"))
     application.add_handler(CallbackQueryHandler(progress.progress_subject,  pattern="^prog_s_\\d+$"))

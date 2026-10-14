@@ -8,6 +8,8 @@ callback_data:
   fb_write                   написать (вход в ConversationHandler)
   fb_write_s_<subject_id>    «✏️ Неточность?» из карточки предмета в дедлайнах
   fb_write_r_<feedback_id>   «✏️ Ответить» под ответом автора
+  fb_cancel                  «✖️ Отмена» на экране ввода (то же, что /cancel)
+  fb_close                   «✖️ Закрыть» под ответом автора — убрать сообщение из чата
 Ответ автора — reply на обращение в чате FEEDBACK_CHAT_ID (author_reply, группа -1).
 """
 import logging
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 FB_INPUT = 0
 STATE_KEY = "fb_input"
 MAIN_MENU = [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
+CANCEL = InlineKeyboardMarkup([[InlineKeyboardButton("✖️ Отмена", callback_data="fb_cancel")]])
 
 
 def _user(db, telegram_id):
@@ -167,7 +170,8 @@ async def write_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     context.user_data[STATE_KEY] = state
-    await show_screen(update, context, F.input_prompt(kind, state['title']), new_message=new_message, parse_mode='HTML')
+    await show_screen(update, context, F.input_prompt(kind, state['title']), new_message=new_message,
+                      reply_markup=CANCEL, parse_mode='HTML')
     return FB_INPUT
 
 
@@ -177,10 +181,11 @@ async def write_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     text = update.message.text.strip()
     if len(text) > F.FEEDBACK_MAX_LEN:
-        await show_screen(update, context, F.too_long(state['title'], len(text)), parse_mode='HTML')
+        await show_screen(update, context, F.too_long(state['title'], len(text)), reply_markup=CANCEL, parse_mode='HTML')
         return FB_INPUT
     if not text:
-        await show_screen(update, context, F.input_prompt(state['kind'], state['title']), parse_mode='HTML')
+        await show_screen(update, context, F.input_prompt(state['kind'], state['title']), reply_markup=CANCEL,
+                          parse_mode='HTML')
         return FB_INPUT
 
     tg = update.effective_user
@@ -218,15 +223,17 @@ async def write_not_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get(STATE_KEY)
     if state is None:
         return ConversationHandler.END
-    await show_screen(update, context, F.not_text(state['title']), parse_mode='HTML')
+    await show_screen(update, context, F.not_text(state['title']), reply_markup=CANCEL, parse_mode='HTML')
     return FB_INPUT
 
 
 async def write_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/cancel — туда, откуда пришли."""
+    """/cancel и «✖️ Отмена» — туда, откуда пришли (ввод уже закрыт по таймауту — в главное меню)."""
     state = context.user_data.pop(STATE_KEY, None) or {'kind': 'reply'}
     if state['kind'] == 'subject':
         from bot.handlers.deadlines import render_subject_card_screen
+        if update.callback_query:
+            await update.callback_query.answer()   # меню и экран «Обратной связи» отвечают сами
         await render_subject_card_screen(update, context, state['subject_id'])
     elif state['kind'] == 'menu':
         await _render(update, context)
@@ -234,6 +241,16 @@ async def write_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from bot.handlers.commands import show_main_menu
         await show_main_menu(update, context)
     return ConversationHandler.END
+
+
+async def close_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """fb_close: убрать «Ответ автора» из чата. Старше 48 ч Telegram удалить не даст — тогда снимаем кнопки."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.message.delete()
+    except Exception:
+        await query.edit_message_reply_markup(reply_markup=None)
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +282,8 @@ async def author_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return                             # обычное сообщение — пусть обработают другие хэндлеры
         student_chat = item.user.telegram_id
         text = F.answer_message(item.created_at, item.text, message.text)
-        markup = InlineKeyboardMarkup([[InlineKeyboardButton("✏️ Ответить", callback_data=f"fb_write_r_{item.id}")]])
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("✏️ Ответить", callback_data=f"fb_write_r_{item.id}"),
+                                        InlineKeyboardButton("✖️ Закрыть", callback_data="fb_close")]])
         try:
             await context.bot.send_message(chat_id=student_chat, text=text, parse_mode='HTML', reply_markup=markup)
         except Forbidden:
