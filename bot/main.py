@@ -153,7 +153,7 @@ def main():
     application.add_handler(CallbackQueryHandler(show_subject_card,          pattern="^deadlines_subj_\\d+$"))
     application.add_handler(CallbackQueryHandler(show_deadline_chart,        pattern="^deadlines_chart$"))
     application.add_handler(CallbackQueryHandler(open_deadlines_from_digest, pattern="^deadlines_open$"))
-    application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify|progress|mysubj)$"))
+    application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify|progress|mysubj|feedback)$"))
     # Обратная связь
     application.add_handler(CallbackQueryHandler(fb.show_feedback, pattern="^fb$"))
     application.add_handler(CallbackQueryHandler(fb.thanks,        pattern="^fb_thanks$"))

@@ -97,6 +97,9 @@ async def open_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_progress(update, context)
     elif section == "mysubj":
         await open_my_subjects(update, context, origin='main')
+    elif section == "feedback":
+        from bot.handlers.feedback import show_feedback
+        await show_feedback(update, context)
     else:  # schedule
         await query.answer()
         await show_schedule(update, context)
