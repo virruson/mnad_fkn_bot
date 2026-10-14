@@ -109,7 +109,13 @@ async def show_subject_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_screen(update, context, "🔐 Сначала авторизуйтесь.")
         return
 
-    subject_id = int(update.callback_query.data.rsplit("_", 1)[-1])
+    await render_subject_card_screen(update, context, int(update.callback_query.data.rsplit("_", 1)[-1]))
+
+
+async def render_subject_card_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, subject_id: int):
+    """Карточка предмета по id — из кнопки и после /cancel в «✏️ Неточность?»."""
+    from bot.services import feedback
+
     db = SessionLocal()
     try:
         subject = db.get(Subject, subject_id)
@@ -122,7 +128,10 @@ async def show_subject_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
-    keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="deadlines")]]
+    keyboard = []
+    if feedback.enabled() and subject is not None:
+        keyboard.append([InlineKeyboardButton("✏️ Неточность?", callback_data=f"fb_write_s_{subject_id}")])
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="deadlines")])
     await show_screen(update, context, text,
                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 

@@ -171,28 +171,38 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #     )
 #     await update.message.reply_text(menu_text)
 
+LOGOUT_CONFIRM_TEXT = ("🚪 <b>Выйти из аккаунта?</b>\n"
+                       "Уведомления перестанут приходить. Настройки и прогресс сохранятся, "
+                       "но для входа снова понадобится код на почту.")
+LOGGED_OUT_TEXT = ("👋 <b>Вы вышли из аккаунта</b>\n"
+                   "Уведомления больше не придут. Чтобы вернуться — войдите снова.")
+
+
 async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выход из аккаунта"""
+    """«🚪 Выйти» и /logout: сначала подтверждение (docs/logout_confirm_developer.md)."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from bot.utils.ui import show_screen
+
+    if not auth_service.is_user_verified(update.effective_user.id):
+        await show_screen(update, context, "❌ Вы не авторизованы.", reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔐 Авторизоваться", callback_data="login")]]))
+        return
+    await show_screen(update, context, LOGOUT_CONFIRM_TEXT, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[
+        InlineKeyboardButton("Да, выйти", callback_data="logout_confirm"),
+        InlineKeyboardButton("◀️ Остаться", callback_data="back_to_menu"),
+    ]]))
+
+
+async def logout_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«Да, выйти»: is_verified = False, снять напоминания на сегодня, экран с кнопкой входа."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from bot.services.scheduler import replan_reminders_for_user
+    from bot.utils.ui import show_screen
+
     user_id = update.effective_user.id
-    
     if auth_service.is_user_verified(user_id):
         auth_service.delete_user(user_id)
+        replan_reminders_for_user(context.job_queue, user_id)   # снимет поставленные на сегодня
         logger.info(f"👋 Пользователь {user_id} вышел из аккаунта")
-        
-        # Определяем, откуда пришел вызов
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
-                "👋 Вы успешно вышли из аккаунта.\n"
-                "До свидания!"
-            )
-        else:
-            await update.message.reply_text(
-                "👋 Вы успешно вышли из аккаунта.\n"
-                "До свидания!"
-            )
-    else:
-        text = "❌ Вы не авторизованы."
-        if update.callback_query:
-            await update.callback_query.edit_message_text(text)
-        else:
-            await update.message.reply_text(text)
+    await show_screen(update, context, LOGGED_OUT_TEXT, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🔐 Авторизоваться", callback_data="login")]]))

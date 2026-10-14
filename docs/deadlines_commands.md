@@ -83,3 +83,15 @@ docker-compose exec bot python -m scripts.announce --text "В разделе «�
 docker-compose exec bot python -m scripts.announce --text "..." --button deadlines   # отправить
 ```
 `--button` необязателен: `deadlines` / `schedule` / `notify` / `progress` / `mysubj`. `--silent` — без звука.
+
+## Обратная связь «💬»
+
+Обращения приходят в группу `-5024604118` (зашито в `bot/services/feedback.py`, `DEFAULT_CHAT_ID`; бот должен быть в группе).
+Другой чат или выключить — в `.env`, затем перечитать:
+```bash
+FEEDBACK_CHAT_ID=-100…        # другой чат (группа стала супергруппой — id сменится на -100…)
+FEEDBACK_CHAT_ID=off          # выключить раздел
+docker-compose up -d --force-recreate bot
+```
+- Ответить студенту — reply на сообщение «💬 Обращение №N». Доставлено — реакция 👍 (или «✓ доставлено»).
+- Все обращения: `docker-compose exec postgres psql -U mnad_bot -d mnad_schedule -c "select id, created_at, context, answered_at from feedback order by id desc limit 20"`

@@ -1,5 +1,5 @@
 # bot/models/__init__.py
-from sqlalchemy import Column, Integer, String, Date, Time, Text, ForeignKey, DateTime, Boolean, Numeric, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Date, Time, Text, ForeignKey, DateTime, Boolean, Numeric, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -147,6 +147,7 @@ class User(Base):
     stream_id = Column(Integer, ForeignKey('streams.id', ondelete='SET NULL'), nullable=True)
     common_enabled = Column(Boolean, nullable=False, default=True, server_default='true',
                             comment='«Общие предметы» в «📚 Мои предметы»')
+    thanked_at = Column(DateTime, nullable=True, comment='Сказал «спасибо» в «💬 Обратной связи» (один раз)')
     digest_enabled = Column(Boolean, default=False, nullable=False, comment='Расписание на день в 10:00')
     reminders_enabled = Column(Boolean, default=False, nullable=False, comment='Напоминание за 15 мин')
     deadlines_enabled = Column(Boolean, default=False, nullable=False, comment='Дедлайны за 4, 2, 1 дн')
@@ -218,6 +219,24 @@ class UserProgress(Base):
         return f"<UserProgress u{self.user_id} d{self.deadline_id} {self.grade}>"
 
 
+class Feedback(Base):
+    """Обращение студента к автору бота («💬 Обратная связь»). Текст видит только автор."""
+    __tablename__ = 'feedback'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    text = Column(Text, nullable=False)
+    context = Column(String(100), nullable=True, comment='Откуда: «Дедлайны · RecSys», «ответ на №12»')
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    admin_message_id = Column(BigInteger, nullable=True, comment='id сообщения у автора — для ответа reply')
+    answered_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<Feedback №{self.id} u{self.user_id}>"
+
+
 # Экспортируем все модели
 __all__ = ['Stream', 'Subject', 'Teacher', 'LessonType', 'Schedule', 'User', 'Module', 'Deadline',
-           'UserProgress', 'UserElective']
+           'UserProgress', 'UserElective', 'Feedback']

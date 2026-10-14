@@ -12,6 +12,8 @@ from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages
 from bot.handlers.notifications import notify_menu, notify_toggle
 from bot.handlers import my_subjects
+from bot.handlers import feedback as fb
+from bot.services import feedback as feedback_config
 from bot.handlers.deadlines import show_deadlines, show_subject_card, open_deadlines_from_digest, open_section, show_deadline_chart
 from bot.handlers import progress
 from bot.services.scheduler import setup_scheduler
@@ -81,6 +83,29 @@ def main():
     )
     application.add_handler(progress_input_handler)
 
+    # 1c. «💬 Обратная связь»: ввод обращения (текст, до 1000 символов)
+    feedback_input_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(fb.write_start, pattern="^fb_write(_s_\\d+|_r_\\d+)?$")],
+        states={
+            fb.FB_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, fb.write_text),
+                MessageHandler(~filters.TEXT & ~filters.COMMAND, fb.write_not_text),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", fb.write_cancel)],
+        per_message=False,
+        allow_reentry=True,
+        conversation_timeout=600,
+    )
+    application.add_handler(feedback_input_handler)
+    author_chat = feedback_config.chat_id()
+    if author_chat is None:
+        logger.warning("FEEDBACK_CHAT_ID не задан — «💬 Обратная связь» выключена")
+    else:
+        # ответ автора reply'ем на «Обращение №N» — раньше всех остальных обработчиков
+        application.add_handler(MessageHandler(filters.Chat(author_chat) & filters.REPLY & filters.TEXT
+                                               & ~filters.COMMAND, fb.author_reply), group=-1)
+
     # 2. ConversationHandler для авторизации
     auth_conv_handler = ConversationHandler(
         entry_points=[
@@ -104,6 +129,7 @@ def main():
     application.add_handler(CommandHandler("today", schedule_today_callback))
     application.add_handler(CommandHandler(["deadlines", "tasks"], show_deadlines))  # /tasks — старый алиас
     application.add_handler(CommandHandler(["progress", "subjects"], progress.show_progress))  # /subjects — старый алиас
+    application.add_handler(CommandHandler("feedback", fb.show_feedback))
 
     # 4. Callback-кнопки (порядок важен)
     application.add_handler(CallbackQueryHandler(auth.login_start, pattern="^login$"))
@@ -127,6 +153,9 @@ def main():
     application.add_handler(CallbackQueryHandler(show_deadline_chart,        pattern="^deadlines_chart$"))
     application.add_handler(CallbackQueryHandler(open_deadlines_from_digest, pattern="^deadlines_open$"))
     application.add_handler(CallbackQueryHandler(open_section, pattern="^open_(deadlines|schedule|notify|progress|mysubj)$"))
+    # Обратная связь
+    application.add_handler(CallbackQueryHandler(fb.show_feedback, pattern="^fb$"))
+    application.add_handler(CallbackQueryHandler(fb.thanks,        pattern="^fb_thanks$"))
     # Мой прогресс
     application.add_handler(CallbackQueryHandler(progress.show_progress,     pattern="^progress$"))
     application.add_handler(CallbackQueryHandler(progress.progress_subject,  pattern="^prog_s_\\d+$"))

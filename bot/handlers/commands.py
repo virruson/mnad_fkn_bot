@@ -14,7 +14,8 @@ from bot.handlers.schedule import (
     schedule_next_week_callback,
     schedule_month_callback,
 )
-from bot.handlers.auth import auth_service, login_start, logout as auth_logout
+from bot.handlers.auth import auth_service, login_start, logout as auth_logout, logout_confirm
+from bot.services import feedback
 from bot.utils.ui import show_screen
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,8 @@ def _build_main_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("⏳ Дедлайны", callback_data="deadlines"),
                 InlineKeyboardButton("📈 Мой прогресс", callback_data="progress"),
             ],
-            [InlineKeyboardButton("🚪 Выйти", callback_data="logout")],
+            ([InlineKeyboardButton("💬 Обратная связь", callback_data="fb")] if feedback.enabled() else [])
+            + [InlineKeyboardButton("🚪 Выйти", callback_data="logout")],
         ])
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Авторизоваться", callback_data="login")]])
 
@@ -71,6 +73,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/today - Расписание на сегодня\n"
         "/deadlines - Дедлайны\n"
         "/progress - Мой прогресс\n"
+        "/feedback - Обратная связь\n"
         "/login - Авторизация\n"
         "/logout - Выйти\n\n"
         "📅 **Доступные периоды расписания:**\n"
@@ -95,9 +98,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await login_start(update, context)
         return
     
-    if query.data == "logout":
+    if query.data == "logout":            # сначала подтверждение
         await auth_logout(update, context)
-        await show_main_menu(update, context)
+        return
+
+    if query.data == "logout_confirm":
+        await logout_confirm(update, context)
         return
     
     # Кнопка возврата в главное меню

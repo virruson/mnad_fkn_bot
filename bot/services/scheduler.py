@@ -16,7 +16,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.utils.database import SessionLocal, get_schedule_by_date
 from bot.models import Subject, User
 from bot.services.deadlines import get_digest_deadlines, get_done_by_user, render_deadline_digest, without_done
-from bot.services.selection import get_selection, get_selection_by_telegram_id, is_visible, visible_deadlines
+from bot.services.selection import get_selection, is_visible, visible_deadlines
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +49,12 @@ async def _send_reminder(context):
     # Студент мог снять предмет в «📚 Мои предметы» после постановки напоминания
     db = SessionLocal()
     try:
+        user = db.query(User).filter(User.telegram_id == str(data['chat_id'])).first()
+        if user is None or not user.is_verified or not user.reminders_enabled:
+            logger.warning(f"[NOTIFY] reminder skipped → {data['chat_id']}: вышел из аккаунта или выключил")
+            return
         subject = db.get(Subject, data.get('subject_id')) if data.get('subject_id') else None
-        if subject is not None and not is_visible(subject, get_selection_by_telegram_id(db, data['chat_id'])):
+        if subject is not None and not is_visible(subject, get_selection(db, user)):
             logger.warning(f"[NOTIFY] reminder skipped → {data['chat_id']}: предмет снят из выбора")
             return
     finally:
