@@ -15,7 +15,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.utils.database import SessionLocal, get_schedule_by_date
 from bot.models import Subject, User
-from bot.services.deadlines import get_digest_deadlines, get_done_by_user, render_deadline_digest, without_done
+from bot.services.deadlines import (
+    DIGEST_OFFSETS, get_digest_deadlines, get_done_by_user, is_past, now_msk, render_deadline_digest, without_done,
+)
 from bot.services.selection import get_selection, is_visible, visible_deadlines
 
 logger = logging.getLogger(__name__)
@@ -230,10 +232,10 @@ def replan_reminders_for_user(jq, telegram_id):
 
 
 # ---------------------------------------------------------------------------
-# Джоб 3: Дедлайны в 10:00 МСК — только за 4, 2 и 1 день
+# Джоб 3: Дедлайны в 10:00 МСК — в день срока и за 1, 2, 4 дня
 # ---------------------------------------------------------------------------
 
-async def send_deadline_digest(bot, today) -> int:
+async def send_deadline_digest(bot, today, offsets=DIGEST_OFFSETS) -> int:
     """Рассылает утреннее сообщение о дедлайнах на дату today. Возвращает число отправок.
 
     Текст у каждого свой: только предметы из «📚 Мои предметы»; сданное в «📈 Мой прогресс»
@@ -242,18 +244,20 @@ async def send_deadline_digest(bot, today) -> int:
     """
     db = SessionLocal()
     try:
-        deadlines = get_digest_deadlines(db, today)
+        now = now_msk()
+        deadlines = [d for d in get_digest_deadlines(db, today, offsets)
+                     if not (today == now.date() and is_past(d, now))]  # срок сегодня, но уже прошёл
         for d in deadlines:
             _ = d.subject  # подгружаем предмет, пока сессия открыта
-        if render_deadline_digest(deadlines, today) is None:
-            logger.warning(f"[NOTIFY] deadline_digest {today}: дедлайнов на 4/2/1 день нет")
+        if render_deadline_digest(deadlines, today, offsets) is None:
+            logger.warning(f"[NOTIFY] deadline_digest {today}: дедлайнов на {offsets} нет")
             return 0
         users = db.query(User).filter(User.deadlines_enabled == True, User.is_verified == True).all()
         done_by_user = get_done_by_user(db, [u.id for u in users])
         texts = []
         for u in users:
             own = without_done(visible_deadlines(deadlines, get_selection(db, u)), done_by_user.get(u.id, []))
-            texts.append((u.telegram_id, render_deadline_digest(own, today)))
+            texts.append((u.telegram_id, render_deadline_digest(own, today, offsets)))
     finally:
         db.close()
 

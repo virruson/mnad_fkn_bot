@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 TOGGLES = {
     'digest':    ('digest_enabled',    "Расписание на день · 10:00"),
     'reminders': ('reminders_enabled', "Напоминание за 15 мин"),
-    'deadlines': ('deadlines_enabled', "Дедлайны · за 4, 2, 1 дн"),
+    'deadlines': ('deadlines_enabled', "Дедлайны · сегодня и за 1, 2, 4 дн"),
     'news':      ('news_enabled',      "Новости бота"),
 }
 

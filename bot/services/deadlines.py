@@ -15,7 +15,7 @@ from bot.models import Deadline, LessonType, Module, Schedule, Subject, User, Us
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 END_OF_DAY = time(23, 59)
 URGENT_DAYS = 2          # «❗», если осталось меньше 2 дней (сегодня или завтра)
-DIGEST_OFFSETS = (1, 2, 4)
+DIGEST_OFFSETS = (0, 1, 2, 4)   # 0 — в сам день срока
 BLOCK_MAX_LINES = 4
 NAME_LIMIT = 25
 NO_INFO = "<i>нет информации</i>"
@@ -238,11 +238,11 @@ def _digest_title(d: Deadline) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Утреннее сообщение (за 4, 2 и 1 день)
+# Утреннее сообщение (в день срока и за 1, 2, 4 дня)
 # ---------------------------------------------------------------------------
 
-def get_digest_deadlines(db, today: date) -> list:
-    dates = [today + timedelta(days=n) for n in DIGEST_OFFSETS]
+def get_digest_deadlines(db, today: date, offsets=DIGEST_OFFSETS) -> list:
+    dates = [today + timedelta(days=n) for n in offsets]
     return db.query(Deadline).filter(Deadline.due_date.in_(dates)).all()
 
 
@@ -289,25 +289,26 @@ def get_done_for_telegram_id(db, telegram_id) -> list:
     return get_done_deadlines(db, user.id if user else None)
 
 
-def render_deadline_digest(deadlines: list, today: date):
+def render_deadline_digest(deadlines: list, today: date, offsets=DIGEST_OFFSETS):
     """Текст сообщения или None, если в этот день напоминать не о чем."""
     groups = defaultdict(list)
     for d in deadlines:
         n = days_left(d, today)
-        if n in DIGEST_OFFSETS:
+        if n in offsets:
             groups[n].append(d)
     if not groups:
         return None
 
-    titles = {1: "❗ <b>Завтра</b>", 2: "<b>Через 2 дня</b>", 4: "<b>Через 4 дня</b>"}
+    titles = {0: "🔥 <b>Сегодня</b>", 1: "❗ <b>Завтра</b>", 2: "<b>Через 2 дня</b>", 4: "<b>Через 4 дня</b>"}
     parts = ["⏳ <b>Дедлайны</b>"]
-    for n in DIGEST_OFFSETS:
+    for n in offsets:
         if not groups[n]:
             continue
         day = today + timedelta(days=n)
         lines = [f"{titles[n]} · {WEEKDAYS[day.weekday()]} {day.strftime('%d.%m')}"]
         for d in sorted(groups[n], key=lambda x: (display_name(x.subject), due_at(x))):
             what = " ".join(filter(None, [KIND_IN_DIGEST[d.kind], escape(_digest_title(d))]))
-            lines.append(f"{escape(display_name(d.subject))} — {what}")
+            until = f" · до {d.due_time:%H:%M}" if n == 0 and d.due_time else ""
+            lines.append(f"{escape(display_name(d.subject))} — {what}{until}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)

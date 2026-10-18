@@ -100,20 +100,24 @@ def test_milestone_only_card():
         "📜 ВКР — защита ВКР")
 
 
-def test_digest_only_4_2_1_days():
+def test_digest_today_and_1_2_4_days():
     deadlines = [
         dl(PMO, 'hw', '№3', (10, 1)), dl(DB, 'test', '№1', (10, 2)),
         dl(TS, 'hw', '№2', (10, 4)), dl(RL, 'quiz', '№1', (10, 4)),
         dl(PMO, 'quiz', '№9', (10, 3)),   # за 3 дня — не шлём
-        dl(PMO, 'quiz', '№2', (9, 30)),   # сегодня — не шлём
+        dl(PMO, 'quiz', '№2', (9, 30), time(23, 59)),   # сегодня — со временем
+        dl(DB, 'hw', '№1', (9, 29)),                      # вчера — не шлём
     ]
     assert render_deadline_digest(deadlines, NOW.date()) == (
         "⏳ <b>Дедлайны</b>\n\n"
+        "🔥 <b>Сегодня</b> · ср 30.09\nПродвинутое МО — квиз/КР №2 · до 23:59\n\n"
         "❗ <b>Завтра</b> · чт 01.10\nПродвинутое МО — ДЗ №3\n\n"
         "<b>Через 2 дня</b> · пт 02.10\nБазы и хранилища данных — КР №1\n\n"
         "<b>Через 4 дня</b> · вс 04.10\nВременные ряды — ДЗ №2\nОбучение с подкреплением — квиз/КР №1"
     )
     assert render_deadline_digest(deadlines, date(2026, 9, 20)) is None
+    only_today = render_deadline_digest(deadlines, NOW.date(), offsets=(0,))
+    assert only_today == "⏳ <b>Дедлайны</b>\n\n🔥 <b>Сегодня</b> · ср 30.09\nПродвинутое МО — квиз/КР №2 · до 23:59"
 
 
 RECSYS = subj(6, "RecSys", formula="0.29·ДЗ_1 + 0.29·ДЗ_2 + 0.42·ЭКЗ")
