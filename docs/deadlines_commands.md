@@ -82,7 +82,7 @@ PY
 docker-compose exec bot python -m scripts.announce --text "В разделе «Дедлайны» появилась <b>ВКР</b>:\nвсе этапы и сроки в одном месте." --button deadlines --dry-run
 docker-compose exec bot python -m scripts.announce --text "..." --button deadlines   # отправить
 ```
-`--button` необязателен: `deadlines` / `schedule` / `notify` / `progress` / `mysubj`. `--silent` — без звука.
+`--button` необязателен: `deadlines` / `schedule` / `notify` / `progress` / `mysubj` / `feedback`. `--subject` — только тем, кому виден предмет. `--news-only` — только тем, у кого из уведомлений включены одни новости. `--title` — свой заголовок вместо «📣 Новое в боте». `--silent` — без звука.
 
 ## Обратная связь «💬»
 

@@ -13,6 +13,9 @@
 --button  необязательная кнопка: deadlines | schedule | notify | progress | mysubj | feedback
 --subject только тем, кому предмет виден в «📚 Мои предметы» (маголего — кто его отметил,
           общий предмет — у кого включены «Общие предметы»). Название или короткое имя предмета.
+--title   свой заголовок вместо «📣 Новое в боте», например "💡 <b>Бот умеет больше</b>"
+--news-only только тем, у кого из уведомлений включены одни «Новости бота»
+          (расписание, напоминание за 15 мин и дедлайны выключены)
 --silent  без звука (сообщение придёт, но телефон не зазвонит)
 --dry-run показать текст и число получателей, ничего не отправлять
 """
@@ -44,8 +47,8 @@ BUTTONS = {
 }
 
 
-def build_message(text: str) -> str:
-    return f"{HEADER}\n\n{text.replace(chr(92) + 'n', chr(10)).strip()}"
+def build_message(text: str, title: str = HEADER) -> str:
+    return f"{title}\n\n{text.replace(chr(92) + 'n', chr(10)).strip()}"
 
 
 def find_subject(db, name: str):
@@ -58,10 +61,12 @@ def find_subject(db, name: str):
     return matches[0]
 
 
-def recipients(subject_name: str | None = None) -> list:
+def recipients(subject_name: str | None = None, news_only: bool = False) -> list:
     db = SessionLocal()
     try:
         users = db.query(User).filter(User.news_enabled == True, User.is_verified == True).all()
+        if news_only:
+            users = [u for u in users if not (u.digest_enabled or u.reminders_enabled or u.deadlines_enabled)]
         if subject_name:
             subject = find_subject(db, subject_name)
             users = [u for u in users if is_visible(subject, get_selection(db, u))]
@@ -91,16 +96,20 @@ def main():
     parser.add_argument('--text', required=True, help="текст объявления (Telegram HTML)")
     parser.add_argument('--button', choices=sorted(BUTTONS), help="кнопка перехода в раздел")
     parser.add_argument('--subject', help="только тем, у кого предмет отмечен в «Моих предметах»")
+    parser.add_argument('--title', default=HEADER, help="заголовок вместо «📣 Новое в боте»")
+    parser.add_argument('--news-only', action='store_true',
+                        help="только тем, у кого включены одни новости")
     parser.add_argument('--silent', action='store_true', help="отправить без звука")
     parser.add_argument('--dry-run', action='store_true', help="ничего не отправлять")
     args = parser.parse_args()
 
-    text = build_message(args.text)
-    chat_ids = recipients(args.subject)
+    text = build_message(args.text, args.title)
+    chat_ids = recipients(args.subject, args.news_only)
     print(text)
     if args.button:
         print(f"[ {BUTTONS[args.button]} ]")
     scope = f" · только «{args.subject}»" if args.subject else ""
+    scope += " · только с одними новостями" if args.news_only else ""
     print(f"\nПолучателей: {len(chat_ids)}{scope}{' · без звука' if args.silent else ''}")
     if args.dry_run:
         print("[dry-run] ничего не отправлено")
