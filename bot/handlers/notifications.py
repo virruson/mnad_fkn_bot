@@ -101,6 +101,7 @@ async def notify_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         setattr(user, field, new_value)
         user.updated_at = datetime.now()
         db.commit()
+        logger.warning(f"[NOTIFY] toggle {user.telegram_id} {user.email}: {field} → {new_value}")
     finally:
         db.close()
 
