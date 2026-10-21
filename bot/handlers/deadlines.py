@@ -25,21 +25,25 @@ from bot.services.deadlines import (
     render_subject_card,
 )
 from bot.utils.database import SessionLocal
-from bot.utils.ui import show_photo_screen, show_screen
+from bot.services import modules as M
+from bot.utils.ui import answer, show_photo_screen, show_screen
 
 MAIN_MENU_BUTTON = [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
 CHART_BUTTON = [InlineKeyboardButton("📊 Все на графике", callback_data="deadlines_chart")]
 _chart_file_ids: dict[str, str] = {}  # cache_key (дата + хэш данных) → file_id фото в Telegram
 
 
-async def _answer(update: Update):
+async def _answer(update: Update, context=None, text: str = None):
     if update.callback_query:
-        await update.callback_query.answer()
+        if context is None:
+            await update.callback_query.answer(text)
+        else:
+            await answer(update, context, text)
 
 
 async def show_deadlines(update: Update, context: ContextTypes.DEFAULT_TYPE, new_message: bool = False):
-    """Список предметов текущего модуля (кнопка «⏳ Дедлайны», /deadlines, /tasks)."""
-    await _answer(update)
+    """Список предметов смотримого модуля (кнопка «⏳ Дедлайны», /deadlines, /tasks)."""
+    await _answer(update, context)
     if not auth_service.is_user_verified(update.effective_user.id):
         await show_screen(update, context, "🔐 Сначала авторизуйтесь.", new_message=new_message)
         return
@@ -50,22 +54,28 @@ async def show_deadlines(update: Update, context: ContextTypes.DEFAULT_TYPE, new
     db = SessionLocal()
     try:
         selection = get_selection_by_telegram_id(db, update.effective_user.id)
-        subjects = visible_subjects(get_screen_subjects(db, now.date()), selection)
+        view = M.get_view_by_telegram_id(db, update.effective_user.id, now.date())
+        subjects = visible_subjects(get_screen_subjects(db, view.view, now.date()), selection)
         deadlines = get_subject_deadlines(db, [s.id for s in subjects])
         done = get_done_for_telegram_id(db, update.effective_user.id)   # сданное не делает предмет срочным
-        buttons = build_subject_buttons(subjects, deadlines, now, done=done)
-        hint = choose_electives_hint(selection, get_available_electives(db, now.date()))
+        # в нетекущем модуле — без «❗», по названию, ВКР последней
+        buttons = build_subject_buttons(subjects, deadlines, now, done=done, by_name=not view.is_current)
+        hint = choose_electives_hint(selection, get_available_electives(db, view.view, now.date()))
     finally:
         db.close()
 
     if selection.is_empty:
         text, keyboard = empty_text("⏳ <b>Дедлайны</b>"), [entry_button('deadlines')]
     else:
-        text = render_deadlines_screen(bool(buttons))
-        keyboard = ([CHART_BUTTON] if buttons else []) + [
+        text = render_deadlines_screen(bool(buttons), view.is_current)
+        chart = [CHART_BUTTON] if buttons and view.is_current else []   # график — только в текущем
+        keyboard = chart + [
             [InlineKeyboardButton(t, callback_data=f"deadlines_subj_{sid}")] for sid, t in buttons]
         if hint:
             keyboard.append(entry_button('deadlines', "📚 Выбрать маголего"))
+    text = M.with_banner(text, view.banner)
+    if back := view.back_button('deadlines'):
+        keyboard.append(back)
     keyboard.append(MAIN_MENU_BUTTON)
     await show_screen(update, context, text, new_message=new_message,
                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
@@ -107,7 +117,7 @@ async def open_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_subject_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Карточка предмета: deadlines_subj_<id>."""
-    await _answer(update)
+    await _answer(update, context)
     if not auth_service.is_user_verified(update.effective_user.id):
         await show_screen(update, context, "🔐 Сначала авторизуйтесь.")
         return
@@ -140,14 +150,26 @@ async def render_subject_card_screen(update: Update, context: ContextTypes.DEFAU
 
 
 async def show_deadline_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """«📊 Все на графике»: фото на 2 недели + подпись; пустое окно — текстовый экран."""
-    await _answer(update)
+    """«📊 Все на графике»: фото на 2 недели + подпись; пустое окно — текстовый экран.
+    В нетекущем модуле графика нет: подсказка и список дедлайнов (старая кнопка в чате)."""
     if not auth_service.is_user_verified(update.effective_user.id):
+        await _answer(update, context)
         await show_screen(update, context, "🔐 Сначала авторизуйтесь.")
         return
 
     now = now_msk()
     today = now.date()
+    db = SessionLocal()
+    try:
+        is_current = M.get_view_by_telegram_id(db, update.effective_user.id, today).is_current
+    finally:
+        db.close()
+    if not is_current:
+        await _answer(update, context, M.CHART_ONLY_CURRENT)
+        await show_deadlines(update, context)
+        return
+    await _answer(update, context)
+
     db = SessionLocal()
     try:
         deadlines = db.query(Deadline).options(joinedload(Deadline.subject)).all()

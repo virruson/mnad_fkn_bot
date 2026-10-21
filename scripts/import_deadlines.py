@@ -200,6 +200,15 @@ class Importer:
             else:
                 self._record('unchanged', name)
             self.session.flush()
+        self._warn_overlaps()
+
+    def _warn_overlaps(self):
+        """Модули не должны пересекаться: текущий модуль определяется по дате (bot/services/modules.py)."""
+        modules = self.session.query(Module).order_by(Module.start_date).all()
+        for prev, nxt in zip(modules, modules[1:]):
+            if nxt.start_date <= prev.end_date:
+                self._note(TAB_MODULES, f"модули пересекаются: {prev.name} до {prev.end_date:%d.%m.%Y}, "
+                                        f"{nxt.name} с {nxt.start_date:%d.%m.%Y}")
 
     def import_formulas(self, rows):
         for i, row in enumerate(rows, start=2):

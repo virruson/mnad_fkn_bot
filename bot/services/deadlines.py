@@ -79,10 +79,9 @@ def display_name(subject: Subject) -> str:
 # ---------------------------------------------------------------------------
 
 def get_current_module(db, today: date):
-    return (db.query(Module)
-            .filter(Module.start_date <= today, Module.end_date >= today)
-            .order_by(Module.start_date.desc())
-            .first())
+    """Перенесено в bot/services/modules.py (там же каникулы между модулями)."""
+    from bot.services.modules import get_current_module as current
+    return current(db, today)
 
 
 def get_module_subjects(db, module: Module) -> list:
@@ -95,15 +94,17 @@ def get_module_subjects(db, module: Module) -> list:
     return db.query(Subject).filter(Subject.id.in_(subject_ids)).all()
 
 
-def get_screen_subjects(db, today: date) -> list:
-    """Предметы экрана «Дедлайны»: текущий модуль + всё, где есть будущие дедлайны (ВКР и т.п.)."""
-    module = get_current_module(db, today)
-    subjects = {s.id: s for s in (get_module_subjects(db, module) if module else [])}
-    with_upcoming = (db.query(Subject).join(Deadline, Deadline.subject_id == Subject.id)
-                     .filter(Deadline.due_date >= today).distinct().all())
-    for s in with_upcoming:
-        subjects.setdefault(s.id, s)
-    return list(subjects.values())
+def get_screen_subjects(db, module, today: date) -> list:
+    """Предметы модуля module (обычно смотримого — modules.get_view_module):
+    занятия и дедлайны в его датах; у текущего модуля — ещё всё с будущими дедлайнами (ВКР и т.п.).
+    module=None (модулей нет) — только предметы с будущими дедлайнами."""
+    from bot.services.modules import get_current_module as current_module, module_subject_ids
+    current = current_module(db, today)
+    is_current = module is None or current is None or module.id == current.id
+    lesson_ids = [s.id for s in get_module_subjects(db, module)] if module else []
+    deadlines = db.query(Deadline.subject_id, Deadline.due_date).all()
+    ids = module_subject_ids(module, today, is_current, lesson_ids, deadlines)
+    return db.query(Subject).filter(Subject.id.in_(ids)).all() if ids else []
 
 
 def get_subject_deadlines(db, subject_ids) -> dict:
@@ -124,14 +125,24 @@ def get_subject_deadlines(db, subject_ids) -> dict:
 # ---------------------------------------------------------------------------
 
 def build_subject_buttons(subjects, deadlines_by_subject: dict, now: datetime,
-                          mark_urgent: bool = True, done: list = ()) -> list:
+                          mark_urgent: bool = True, done: list = (), by_name: bool = False) -> list:
     """
     [(subject_id, текст_кнопки), ...] в порядке: срочные, дальше по ближайшему
     дедлайну, предметы без будущих дедлайнов — в конце. ВКР (только этапы) всегда
     последняя: «❗» получает, но место не меняет. mark_urgent=False — тот же порядок
     без «❗» («Мой прогресс»). done — сданное студентом: не делает предмет срочным
-    и не участвует в сортировке.
+    и не участвует в сортировке. by_name=True — нетекущий модуль: без «❗», по названию
+    (сначала кириллица, потом латиница), ВКР последней.
     """
+    if by_name:
+        from bot.services.modules import name_key
+        items = []
+        for s in subjects:
+            own = deadlines_by_subject.get(s.id, [])
+            pinned_last = bool(own) and all(d.kind == 'milestone' for d in own)
+            items.append((pinned_last, name_key(display_name(s)), s.id, display_name(s)))
+        items.sort()
+        return [(sid, name) for *_, sid, name in items]
     items = []
     for s in subjects:
         own = deadlines_by_subject.get(s.id, [])
@@ -145,8 +156,12 @@ def build_subject_buttons(subjects, deadlines_by_subject: dict, now: datetime,
     return [(sid, f"❗ {name}" if urgent and mark_urgent else name) for *_, name, sid, urgent in items]
 
 
-def render_deadlines_screen(has_subjects: bool) -> str:
-    hint = "Выберите предмет · ❗ — меньше 2 дней" if has_subjects else NO_INFO
+def render_deadlines_screen(has_subjects: bool, is_current: bool = True) -> str:
+    """В нетекущем модуле подсказка без «❗» — срочное показывается только в текущем."""
+    if not has_subjects:
+        hint = NO_INFO
+    else:
+        hint = "Выберите предмет · ❗ — меньше 2 дней" if is_current else "Выберите предмет"
     return f"⏳ <b>Дедлайны</b>\n{hint}"
 
 

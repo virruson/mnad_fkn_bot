@@ -69,21 +69,17 @@ def subject_filter(sel: Selection):
 
 
 def available_electives(module_subjects, upcoming_subjects) -> list:
-    """Маголего текущего модуля или с будущими дедлайнами, по алфавиту короткого имени."""
+    """Маголего из списков предметов, по алфавиту короткого имени."""
     from bot.services.deadlines import display_name
     found = {s.id: s for s in [*module_subjects, *upcoming_subjects] if s.is_elective}
     return sorted(found.values(), key=lambda s: display_name(s).casefold())
 
 
-def get_available_electives(db, today: date) -> list:
-    """Маголего для выбора: занятия в текущем модуле или будущие дедлайны (как get_screen_subjects).
-    Маголего прошлых модулей не предлагаются, но и из выбора не удаляются."""
-    from bot.services.deadlines import get_current_module, get_module_subjects
-    module = get_current_module(db, today)
-    module_subjects = get_module_subjects(db, module) if module else []
-    upcoming = (db.query(Subject).join(Deadline, Deadline.subject_id == Subject.id)
-                .filter(Deadline.due_date >= today, Subject.is_elective.is_(True)).distinct().all())
-    return available_electives(module_subjects, upcoming)
+def get_available_electives(db, module, today: date) -> list:
+    """Маголего для выбора в модуле module (обычно смотримом): по правилу «предметы модуля»
+    (get_screen_subjects). Маголего других модулей не предлагаются, но и из выбора не удаляются."""
+    from bot.services.deadlines import get_screen_subjects
+    return available_electives(get_screen_subjects(db, module, today), [])
 
 
 def toggle_elective(db, user, subject_id: int) -> bool:

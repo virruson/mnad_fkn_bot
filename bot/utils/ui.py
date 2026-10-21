@@ -85,3 +85,19 @@ async def show_photo_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     sent = await context.bot.send_photo(chat_id=chat_id, photo=photo, **kwargs)
     context.chat_data[SCREEN_MSG_KEY] = sent.message_id
     return sent
+
+
+ANSWERED_KEY = "answered_query_id"
+
+
+async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str = None):
+    """query.answer один раз на нажатие: подсказка «Открыт 6 модуль · текущий» и следом экран раздела,
+    который тоже отвечает на нажатие, — второй ответ Telegram не принимает."""
+    query = update.callback_query
+    if query is None or context.chat_data.get(ANSWERED_KEY) == query.id:
+        return
+    context.chat_data[ANSWERED_KEY] = query.id
+    try:
+        await query.answer(text)
+    except BadRequest as e:
+        logger.warning(f"query.answer: {e}")

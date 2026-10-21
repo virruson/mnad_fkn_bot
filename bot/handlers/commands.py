@@ -16,13 +16,32 @@ from bot.handlers.schedule import (
 )
 from bot.handlers.auth import auth_service, login_start, logout as auth_logout, logout_confirm
 from bot.services import feedback
-from bot.utils.ui import show_screen
+from bot.utils.ui import answer, show_screen
 
 logger = logging.getLogger(__name__)
 
+def _module_row(user_id: int) -> list:
+    """[ 🗂 5 модуль · архив ] — первой строкой, если модулей больше одного."""
+    from bot.services.deadlines import now_msk
+    from bot.services.modules import get_view_by_telegram_id, menu_label
+    from bot.utils.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        v = get_view_by_telegram_id(db, user_id, now_msk().date())
+        if len(v.modules) < 2 or v.view is None:
+            return []
+        return [[InlineKeyboardButton(menu_label(v.view, v.current, v.today), callback_data="module")]]
+    except Exception as e:  # меню должно открываться, даже если с модулями что-то не так
+        logger.error(f"module row: {e}")
+        return []
+    finally:
+        db.close()
+
+
 def _build_main_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
     if auth_service.is_user_verified(user_id):
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(_module_row(user_id) + [
             [
                 InlineKeyboardButton("📅 Расписание", callback_data="schedule"),
                 InlineKeyboardButton("🔔 Уведомления", callback_data="notify"),
@@ -54,8 +73,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_markup = _build_main_menu_keyboard(user_id)
 
-    if update.callback_query:
-        await update.callback_query.answer()
+    await answer(update, context)
 
     # show_screen: правит текущее сообщение (кнопка) или удаляет предыдущий
     # экран и шлёт новое (команда /start) — в чате остаётся один активный экран
@@ -88,7 +106,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик кнопок"""
     query = update.callback_query
-    await query.answer()
+    await answer(update, context)
     
     user_id = update.effective_user.id
     logger.info(f"🔘 Нажата кнопка: {query.data}")

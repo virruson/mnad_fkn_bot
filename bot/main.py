@@ -16,6 +16,7 @@ from bot.handlers import feedback as fb
 from bot.services import feedback as feedback_config
 from bot.handlers.deadlines import show_deadlines, show_subject_card, open_deadlines_from_digest, open_section, show_deadline_chart
 from bot.handlers import progress
+from bot.handlers import module as module_switch
 from bot.services.scheduler import setup_scheduler
 
 # Импортируем обработчики расписания
@@ -31,6 +32,7 @@ from bot.handlers.schedule import (
     schedule_custom_from,
     schedule_custom_to,
     schedule_custom_cancel,
+    schedule_module_week,
     CUSTOM_FROM,
     CUSTOM_TO,
 )
@@ -140,6 +142,12 @@ def main():
     application.add_handler(CallbackQueryHandler(schedule_week_callback, pattern="^schedule_week$"))
     application.add_handler(CallbackQueryHandler(schedule_next_week_callback, pattern="^schedule_next_week$"))
     application.add_handler(CallbackQueryHandler(schedule_month_callback, pattern="^schedule_month$"))
+    application.add_handler(CallbackQueryHandler(schedule_module_week, pattern="^schedule_mw_\\d+_\\d+$"))
+    # Выбор модуля
+    application.add_handler(CallbackQueryHandler(module_switch.show_module_screen, pattern="^module$"))
+    application.add_handler(CallbackQueryHandler(module_switch.module_set, pattern="^module_set_\\d+$"))
+    application.add_handler(CallbackQueryHandler(module_switch.module_now,
+                                                 pattern="^module_now_(deadlines|progress|mysubj|schedule)$"))
     # Уведомления
     application.add_handler(CallbackQueryHandler(notify_menu,      pattern="^notify_menu$"))
     application.add_handler(CallbackQueryHandler(notify_menu,      pattern="^notify$"))

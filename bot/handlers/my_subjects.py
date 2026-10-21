@@ -15,14 +15,17 @@ from telegram.ext import ContextTypes
 
 from bot.handlers.auth import auth_service
 from bot.models import Subject, User
-from bot.services.deadlines import display_name, now_msk
+from bot.services.deadlines import display_name, get_screen_subjects, now_msk
 from bot.services.scheduler import replan_reminders_for_user
 from bot.services.selection import get_available_electives, get_selection, toggle_elective
 from bot.utils.database import SessionLocal
-from bot.utils.ui import show_screen
+from bot.services import modules as M
+from bot.utils.ui import answer, show_screen
 
 BACK_KEY = "mysubj_back"
 BACK_TARGETS = {'notify': "notify_menu", 'deadlines': "deadlines", 'progress': "progress", 'main': "back_to_menu"}
+TITLE = "📚 <b>Мои предметы</b>"
+NO_INFO = "<i>нет информации</i>"
 TEXT = ("📚 <b>Мои предметы</b>\n"
         "Уведомления, расписание, дедлайны, график и прогресс — только по отмеченным.\n"
         "Маголего отметьте те, на которые записаны.")
@@ -48,17 +51,27 @@ async def render(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_screen(update, context, "❌ Пользователь не найден. Авторизуйтесь заново.")
             return
         sel = get_selection(db, user)
-        electives = get_available_electives(db, now_msk().date())
-        rows = [[InlineKeyboardButton(f"{'✅' if sel.common else '☐'} {COMMON_LABEL}",
-                                      callback_data="mysubj_common")]]
+        today = now_msk().date()
+        view = M.get_view(db, user, today)
+        electives = get_available_electives(db, view.view, today)
+        # будущий модуль, где ещё нет ни занятий, ни дедлайнов, — «нет информации» без переключателей
+        unknown = not view.is_current and not get_screen_subjects(db, view.view, today)
+        rows = [] if unknown else [[InlineKeyboardButton(f"{'✅' if sel.common else '☐'} {COMMON_LABEL}",
+                                                         callback_data="mysubj_common")]]
         rows += [[InlineKeyboardButton(f"{'✅' if s.id in sel.elective_ids else '☐'} {display_name(s)}",
                                        callback_data=f"mysubj_el_{s.id}")] for s in electives]
     finally:
         db.close()
 
     back = BACK_TARGETS.get(context.user_data.get(BACK_KEY), "notify_menu")
+    if back_now := view.back_button('mysubj'):
+        rows.append(back_now)
     rows.append([InlineKeyboardButton("◀️ Назад", callback_data=back)])
-    text = TEXT if electives else f"{TEXT}\n\n{NO_ELECTIVES}"
+    if unknown:
+        text = f"{TITLE}\n{NO_INFO}"
+    else:
+        text = TEXT if electives else f"{TEXT}\n\n{NO_ELECTIVES}"
+    text = M.with_banner(text, view.banner)
     await show_screen(update, context, text, reply_markup=InlineKeyboardMarkup(rows), parse_mode='HTML')
 
 
@@ -68,7 +81,7 @@ async def open_my_subjects(update: Update, context: ContextTypes.DEFAULT_TYPE, o
     if origin is None:
         data = query.data
         origin = data.removeprefix("mysubj_from_") if data.startswith("mysubj_from_") else 'notify'
-    await query.answer()
+    await answer(update, context)
     if not auth_service.is_user_verified(update.effective_user.id):
         await show_screen(update, context, "🔐 Сначала авторизуйтесь.")
         return

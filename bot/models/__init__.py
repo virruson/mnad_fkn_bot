@@ -150,6 +150,11 @@ class User(Base):
     thanked_at = Column(DateTime, nullable=True, comment='Первое «спасибо» в «💬 Обратной связи»')
     thanks_count = Column(Integer, nullable=False, default=0, server_default='0',
                           comment='Сколько раз нажал сердечко')
+    # «🗂 Модуль»: какой модуль смотрит студент (NULL — текущий) и какой был текущим в момент выбора
+    view_module_id = Column(Integer, ForeignKey('modules.id', ondelete='SET NULL'), nullable=True,
+                            comment='Выбранный в «🗂 Модуль» (NULL — текущий)')
+    view_module_base_id = Column(Integer, ForeignKey('modules.id', ondelete='SET NULL'), nullable=True,
+                                 comment='Текущий модуль в момент выбора — для автосброса')
     digest_enabled = Column(Boolean, default=True, nullable=False, server_default='true',
                             comment='Расписание на день в 10:00, вкл по умолчанию')
     reminders_enabled = Column(Boolean, default=False, nullable=False, comment='Напоминание за 15 мин')
@@ -163,7 +168,7 @@ class User(Base):
         return f"<User {self.telegram_id}: {self.email}>"
 
 class Module(Base):
-    """Учебный модуль. Текущий — тот, в диапазон дат которого попадает сегодня."""
+    """Учебный модуль. Текущий и смотримый — bot/services/modules.py."""
     __tablename__ = 'modules'
 
     id = Column(Integer, primary_key=True)

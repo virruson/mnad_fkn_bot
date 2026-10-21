@@ -28,7 +28,8 @@ from bot.services import progress as P
 from bot.services.deadlines import build_subject_buttons, get_screen_subjects, get_subject_deadlines, now_msk
 from bot.services.selection import get_available_electives, get_selection, is_visible
 from bot.utils.database import SessionLocal
-from bot.utils.ui import show_screen
+from bot.services import modules as M
+from bot.utils.ui import answer, show_screen
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +112,7 @@ async def show_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Список предметов: кнопка «📈 Мой прогресс», /progress, /subjects."""
     if await _not_authorized(update, context):
         return
-    if update.callback_query:
-        await update.callback_query.answer()
+    await answer(update, context)
 
     from bot.handlers.my_subjects import choose_electives_hint, empty_text, entry_button
 
@@ -121,16 +121,15 @@ async def show_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = _user(db, update.effective_user.id)
         selection = get_selection(db, user)
-        # Набор — как в «Дедлайнах» + все предметы с активностями (прошедший модуль не пропадает),
+        view = M.get_view(db, user, now.date())
+        # Набор — как в «Дедлайнах» смотримого модуля (прошедший модуль — через «🗂 Модуль»),
         # только отмеченные в «📚 Мои предметы»; отметки по снятым маголего не удаляются
-        subjects = {s.id: s for s in get_screen_subjects(db, now.date())}
-        for s in (db.query(Subject).join(Deadline, Deadline.subject_id == Subject.id)
-                  .filter(Deadline.progress_role != 'hidden').distinct()):
-            subjects.setdefault(s.id, s)
-        subjects = {sid: s for sid, s in subjects.items() if is_visible(s, selection)}
-        hint = choose_electives_hint(selection, get_available_electives(db, now.date()))
+        subjects = {s.id: s for s in get_screen_subjects(db, view.view, now.date())
+                    if is_visible(s, selection)}
+        hint = choose_electives_hint(selection, get_available_electives(db, view.view, now.date()))
         deadlines = get_subject_deadlines(db, subjects)
-        order = build_subject_buttons(subjects.values(), deadlines, now, mark_urgent=False)
+        order = build_subject_buttons(subjects.values(), deadlines, now, mark_urgent=False,
+                                      by_name=not view.is_current)
         all_ids = [d.id for ds in deadlines.values() for d in ds]
         marks = _marks(db, user.id, all_ids) if user else {}
         lines = [P.render_list_line(subjects[sid], deadlines.get(sid, []), marks) for sid, _ in order]
@@ -144,6 +143,9 @@ async def show_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text, buttons = empty_text("📈 <b>Мой прогресс</b>"), [entry_button('progress')]
     elif hint:
         buttons.append(entry_button('progress', "📚 Выбрать маголего"))
+    text = M.with_banner(text, view.banner)
+    if back := view.back_button('progress'):
+        buttons.append(back)
     buttons.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_menu")])
     await show_screen(update, context, text,
                       reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')

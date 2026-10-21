@@ -15,7 +15,7 @@ from bot.utils.database import (
     format_schedule_message,
 )
 from bot.services.selection import get_selection_by_telegram_id
-from bot.utils.ui import show_screen
+from bot.utils.ui import answer, show_screen
 
 # Состояния ConversationHandler для ввода произвольного периода
 CUSTOM_FROM = 10
@@ -29,7 +29,9 @@ def _selection(db, update):
 @auth_required
 async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать расписание (обработчик команды /schedule)"""
-    
+    if await _show_module_schedule(update, context):
+        return   # открыт нетекущий модуль — свой экран (по неделям)
+
     # Создаем клавиатуру с кнопками в один столбик
     keyboard = [
         [InlineKeyboardButton("📅 Сегодня", callback_data="schedule_today")],
@@ -506,3 +508,89 @@ async def schedule_custom_cancel(update: Update, context: ContextTypes.DEFAULT_T
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return ConversationHandler.END
+
+# ── Нетекущий модуль: расписание по неделям (docs/ui_module.md, п. 5) ─────────
+
+def _module_lessons(db, update, monday, sunday):
+    """[(дата, время, короткое название, тип)] за неделю — только «Мои предметы»."""
+    from types import SimpleNamespace
+    from bot.services.deadlines import display_name
+    rows = get_schedule_between(db, monday, sunday, _selection(db, update))
+    return [(r.Schedule.lesson_date, r.Schedule.lesson_time,
+             display_name(SimpleNamespace(name=r.subject_name, short_name=r.subject_short_name)),
+             r.lesson_type_name) for r in rows]
+
+
+def _has_lessons(db, module) -> bool:
+    from bot.models import Schedule
+    return db.query(Schedule.id).filter(
+        Schedule.lesson_date.between(module.start_date, module.end_date)).first() is not None
+
+
+async def _show_module_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Экран «📅 Расписание» в нетекущем модуле. False — модуль текущий, показать обычный экран."""
+    from bot.services import modules as M
+    from bot.services.deadlines import now_msk
+
+    db = SessionLocal()
+    try:
+        v = M.get_view_by_telegram_id(db, update.effective_user.id, now_msk().date())
+        if v.is_current:
+            return False
+        module = v.view
+        has_lessons = _has_lessons(db, module)
+    finally:
+        db.close()
+
+    await answer(update, context)
+    rows = []
+    if has_lessons:
+        n = M.nearest_week(module, v.today)
+        rows += [[InlineKeyboardButton("📅 По неделям", callback_data=f"schedule_mw_{module.id}_{n}")],
+                 [InlineKeyboardButton("🗓 Указать период", callback_data="schedule_custom")]]
+    rows += [v.back_button('schedule'), [InlineKeyboardButton("◀️ Назад", callback_data="back_to_menu")]]
+    await show_screen(update, context, M.schedule_screen_text(module, v.banner, has_lessons),
+                      reply_markup=InlineKeyboardMarkup(rows), parse_mode='HTML')
+    return True
+
+
+async def schedule_module_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """schedule_mw_<module_id>_<n>: неделя n модуля. module_id в callback — чтобы кнопка работала,
+    даже если модуль переключили в другом окне."""
+    from bot.models import Module
+    from bot.services import modules as M
+    from bot.services.deadlines import now_msk
+
+    await answer(update, context)
+    if not auth_service.is_user_verified(update.effective_user.id):
+        await show_screen(update, context, "🔐 Требуется авторизация")
+        return
+    _, _, module_id, n = update.callback_query.data.split("_")
+    db = SessionLocal()
+    try:
+        module = db.get(Module, int(module_id))
+        if module is None:
+            db.close()
+            await show_schedule(update, context)
+            return
+        total = M.week_count(module)
+        n = min(max(int(n), 1), total)
+        monday, sunday = M.week_bounds(module, n)
+        lessons = _module_lessons(db, update, monday, sunday)
+        today = now_msk().date()
+        current = M.get_current_module(db, today)
+        banner = M.module_banner(module, current, today)
+    finally:
+        db.close()
+
+    nav = []
+    if n > 1:
+        nav.append(InlineKeyboardButton(f"◀️ Неделя {n - 1}", callback_data=f"schedule_mw_{module.id}_{n - 1}"))
+    if n < total:
+        nav.append(InlineKeyboardButton(f"Неделя {n + 1} ▶️", callback_data=f"schedule_mw_{module.id}_{n + 1}"))
+    rows = ([nav] if nav else []) + [
+        [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")],
+    ]
+    await show_screen(update, context, M.render_week(module, n, lessons, banner),
+                      reply_markup=InlineKeyboardMarkup(rows), parse_mode='HTML')

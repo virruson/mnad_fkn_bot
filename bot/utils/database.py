@@ -44,6 +44,7 @@ def _schedule_query(db, selection=None):
     query = db.query(
         Schedule,
         Subject.name.label('subject_name'),
+        Subject.short_name.label('subject_short_name'),
         Teacher.last_name,
         Teacher.first_name,
         Teacher.middle_name,
