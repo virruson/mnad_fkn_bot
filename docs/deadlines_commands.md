@@ -84,6 +84,16 @@ docker-compose exec bot python -m scripts.announce --text "..." --button deadlin
 ```
 `--button` необязателен: `deadlines` / `schedule` / `notify` / `progress` / `mysubj` / `feedback`. `--subject` — только тем, кому виден предмет. `--news-only` — только тем, у кого из уведомлений включены одни новости. `--title` — свой заголовок вместо «📣 Новое в боте». `--silent` — без звука.
 
+## Участники бота
+
+```bash
+./scripts/users.sh              # сводка + список (q — выход из списка)
+./scripts/users.sh summary      # только сводка: всего, вериф, кто что включил
+./scripts/users.sh csv > users.csv   # список в CSV для Excel
+```
+`вериф = f` — вышел через «🚪 Выйти»: запись и настройки сохраняются, но ему ничего не приходит.
+История переключений уведомлений: `docker-compose logs bot | grep "NOTIFY] toggle"`.
+
 ## Обратная связь «💬»
 
 Обращения приходят в группу `-5024604118` (зашито в `bot/services/feedback.py`, `DEFAULT_CHAT_ID`; бот должен быть в группе).
