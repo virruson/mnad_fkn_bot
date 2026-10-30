@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from html import escape
 
-from bot.services.deadlines import END_OF_DAY, KIND_BLOCKS, NO_INFO, display_name, due_at
+from bot.services.deadlines import END_OF_DAY, KIND_BLOCKS, NO_INFO, TBD_TEXT, display_name, due_at, is_tbd
 
 WEIGHT_KINDS = ('hw', 'quiz', 'test', 'project', 'exam')
 SHORT_KIND = {'hw': 'ДЗ', 'quiz': 'Квиз', 'test': 'КР', 'project': 'Проект', 'exam': 'Экзамен'}
@@ -178,6 +178,8 @@ def short_label(d) -> str:
 
 
 def _due(d) -> str:
+    if is_tbd(d):
+        return TBD_TEXT
     s = d.due_date.strftime('%d.%m')
     if d.due_time and d.due_time != END_OF_DAY:
         s += f", {d.due_time.strftime('%H:%M')}"

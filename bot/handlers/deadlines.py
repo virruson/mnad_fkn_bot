@@ -16,6 +16,7 @@ from bot.services.selection import (
 )
 from bot.services.deadlines import (
     build_subject_buttons,
+    is_tbd,
     get_done_for_telegram_id,
     without_done,
     get_screen_subjects,
@@ -172,7 +173,8 @@ async def show_deadline_chart(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     db = SessionLocal()
     try:
-        deadlines = db.query(Deadline).options(joinedload(Deadline.subject)).all()
+        deadlines = [d for d in db.query(Deadline).options(joinedload(Deadline.subject)).all()
+                     if not is_tbd(d)]   # «дата уточняется» на график не попадает
         deadlines = visible_deadlines(deadlines, get_selection_by_telegram_id(db, update.effective_user.id))
         had_in_window = bool(deadline_chart.split_items(deadlines, now)[0])
         # сданное (и жёсткий срок к нему) — ни на картинке, ни в подписи

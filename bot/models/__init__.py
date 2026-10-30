@@ -193,6 +193,7 @@ class Deadline(Base):
     title = Column(String(255), nullable=False)
     due_date = Column(Date, nullable=False)
     due_time = Column(Time, nullable=True, comment='NULL = 23:59')
+    note = Column(Text, nullable=True, comment='Срок текстом, если дата уточняется (due_date = 2099-12-31)')
     progress_role = Column(String(10), nullable=False, default='item', server_default='item',
                            comment='«Мой прогресс»: item | bonus (вне накопа) | hidden (жёсткий срок, пересдача)')
 

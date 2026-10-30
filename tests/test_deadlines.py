@@ -171,3 +171,18 @@ if __name__ == '__main__':
         if name.startswith('test_'):
             fn()
             print(f"ok  {name}")
+
+
+def test_date_tbd_shown_as_text():
+    from bot.services.deadlines import TBD_DATE, render_deadline_digest
+    from bot.services import deadline_chart
+    d = dl(PMO, 'hw', '№1', (12, 31))
+    d.due_date = TBD_DATE
+    d.note = "мягкий — выкладка ДЗ №2 + 1 неделя, жёсткий — + 2 недели"
+    card = render_subject_card(PMO, [d], NOW)
+    assert "№1 · <i>мягкий — выкладка ДЗ №2 + 1 неделя, жёсткий — + 2 недели</i>" in card
+    assert "❗" not in card and "осталось" not in card
+    assert "✅ <s>№1 · <i>мягкий" in render_subject_card(PMO, [d], NOW, done=[d])
+    assert render_deadline_digest([d], NOW.date()) is None
+    buttons = build_subject_buttons([PMO], {PMO.id: [d]}, NOW)
+    assert buttons == [(PMO.id, "Продвинутое МО")]          # без «❗»

@@ -36,6 +36,9 @@ weights — веса для накопа в «📈 Мой прогресс»: к
 progress — роль строки в прогрессе: пусто (обычная активность), bonus (вне накопа), hidden
 (не показывать: жёсткие сроки, пересдачи). В Google Sheet — колонка «Прогресс» вкладки «Дедлайны».
 Карточка дедлайнов, утренняя рассылка и график это поле не учитывают.
+Срок пока неизвестен — "date": "уточняется" и "note": текст срока (покажется в карточке вместо
+даты, в рассылки и на график не попадает): {"title": "№1", "date": "уточняется",
+"note": "мягкий — выкладка ДЗ №2 + 1 неделя"}. В Google Sheet — 7-я колонка вкладки «Дедлайны».
 elective — "elective": true у предмета: маголего, которого ещё нет в расписании (в Google Sheet —
 колонка «Маголего» вкладки «Формулы», любое непустое значение). Обратно в false импорт не сбрасывает.
 
@@ -65,6 +68,7 @@ from sqlalchemy import func
 from bot.utils.database import SessionLocal
 from bot.models import Subject, Deadline, Module, UserProgress
 from bot.services.progress import parse_weights, weights_sum_ok
+from bot.services.deadlines import TBD_DATE
 
 KINDS = {'дз': 'hw', 'квиз': 'quiz', 'квиз/кр': 'quiz', 'кр': 'test', 'экзамен': 'exam', 'экз': 'exam',
          'этап': 'milestone', 'проект': 'project'}
@@ -100,7 +104,8 @@ def fetch_json(path):
                         'elective' if s.get('elective') else '']
                        for s in data.get('subjects', [])],
         TAB_DEADLINES: [[d.get('subject') or '', d.get('type') or '', d.get('title') or '',
-                         d.get('date') or '', d.get('time') or '', d.get('progress') or '']
+                         d.get('date') or '', d.get('time') or '', d.get('progress') or '',
+                         d.get('note') or '']
                         for d in data.get('deadlines', [])],
     }
 
@@ -112,8 +117,13 @@ def _weights_cell(weights):
     return weights or ''
 
 
+TBD_WORDS = ('уточняется', 'tbd')   # «date»: «уточняется» — срок текстом в «note»
+
+
 def parse_date(value):
     value = value.strip()
+    if value.lower() in TBD_WORDS:
+        return TBD_DATE
     for fmt in ('%d.%m.%Y', '%Y-%m-%d'):
         try:
             return datetime.strptime(value, fmt).date()
@@ -274,7 +284,7 @@ class Importer:
 
     def _import_deadline_rows(self, rows):
         for i, row in enumerate(rows, start=2):
-            name, kind_raw, title, date_raw, time_raw, role_raw = cells(row, 6)
+            name, kind_raw, title, date_raw, time_raw, role_raw, note = cells(row, 7)
             if not any((name, kind_raw, title, date_raw)):
                 continue
             where = f"{TAB_DEADLINES}!{i}"
@@ -300,16 +310,20 @@ class Importer:
                 self._warn(where, e)
                 continue
 
-            label = f"{name} · {kind_raw} {title} · {due_date:%d.%m.%Y}{f' {due_time:%H:%M}' if due_time else ''}"
+            when = f"дата уточняется: {note}" if due_date == TBD_DATE else f"{due_date:%d.%m.%Y}"
+            label = f"{name} · {kind_raw} {title} · {when}{f' {due_time:%H:%M}' if due_time else ''}"
+            if due_date == TBD_DATE and not note:
+                self._note(where, f"«{title}»: дата уточняется, а текст срока (note) пустой")
             deadline = self.session.query(Deadline).filter_by(
                 subject_id=subject.id, kind=kind, title=title).first()
             if deadline is None:
                 deadline = Deadline(subject_id=subject.id, kind=kind, title=title,
-                                    due_date=due_date, due_time=due_time, progress_role=role)
+                                    due_date=due_date, due_time=due_time, progress_role=role,
+                                    note=note or None)
                 self.session.add(deadline)
                 self._record('created', label)
             elif changes := self._apply(deadline, {'due_date': due_date, 'due_time': due_time,
-                                                   'progress_role': role}):
+                                                   'progress_role': role, 'note': note or None}):
                 self._record('updated', f"{label} ({'; '.join(changes)})")
             else:
                 self._record('unchanged', label)

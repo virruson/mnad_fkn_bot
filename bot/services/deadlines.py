@@ -14,6 +14,10 @@ from bot.models import Deadline, LessonType, Module, Schedule, Subject, User, Us
 
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 END_OF_DAY = time(23, 59)
+# «Дата уточняется»: срок пока известен только текстом (deadlines.note). В БД дата обязательна,
+# поэтому ставим заведомо далёкую — в рассылки, график и «❗» такая строка не попадает.
+TBD_DATE = date(2099, 12, 31)
+TBD_TEXT = "дата уточняется"
 URGENT_DAYS = 2          # «❗», если осталось меньше 2 дней (сегодня или завтра)
 DIGEST_OFFSETS = (0, 1, 2, 4)   # 0 — в сам день срока
 BLOCK_MAX_LINES = 4
@@ -44,6 +48,14 @@ def now_msk() -> datetime:
 # ---------------------------------------------------------------------------
 # Свойства одного дедлайна
 # ---------------------------------------------------------------------------
+
+def is_tbd(d) -> bool:
+    return d.due_date >= TBD_DATE
+
+
+def tbd_text(d) -> str:
+    return (getattr(d, 'note', None) or TBD_TEXT).strip()
+
 
 def due_at(d: Deadline) -> datetime:
     return datetime.combine(d.due_date, d.due_time or END_OF_DAY)
@@ -180,6 +192,9 @@ def format_deadline_line(d: Deadline, now: datetime, marked: set = frozenset(),
                          closed: set = frozenset()) -> str:
     """marked — id, которые студент отметил сданными («✅» + зачёркнуто);
     closed — они же плюс их пары «жёсткий» (просто зачёркнуто, без «❗» и «осталось»)."""
+    if is_tbd(d):   # срок пока текстом: «№1 · <i>мягкий — выкладка ДЗ №2 + 1 неделя …</i>»
+        base = f"{escape(d.title)} · <i>{escape(tbd_text(d))}</i>"
+        return f"✅ <s>{base}</s>" if d.id in marked else base
     parts = [escape(d.title), f"<b>{_format_due(d)}</b>"]
     if d.kind == 'milestone':
         parts.reverse()  # у этапов ВКР длинные названия — дата впереди
