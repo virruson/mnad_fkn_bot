@@ -15,7 +15,12 @@
     19:40-21:00
     ссылка
 Ссылка на встречу: гиперссылка ячейки вида …/j/… (не запись), иначе — ссылка этого предмета
-из --links-from (прошлые модули). Записи без времени («Сессия», экзамен без часа) пропускаются.
+из --links-from (прошлые модули, первым — самый новый). Записи без времени («Сессия», экзамен без часа)
+пропускаются. Два занятия в одной ячейке, а гиперссылка одна — см. fix_shared_links.
+
+Уже разобранный JSONL можно поправить без xlsx:
+    python scripts/parse_schedule.py --fix-links scripts/schedule_6module_parsed.jsonl \
+        --links-from scripts/schedule_5module_parsed.jsonl --out scripts/schedule_6module_parsed.jsonl
 """
 import argparse
 import json
@@ -75,6 +80,8 @@ def parse_block(text):
         if ',' in teacher:                          # «Мария Горденко, экзамен»
             teacher, hint = [p.strip() for p in teacher.split(',', 1)]
             kind_hint = 'Экзамен' if 'экзамен' in hint.lower() else None
+    if kind_hint is None and subject.startswith('Встреча'):   # «Встреча по ВКР» — не предмет
+        kind_hint = 'Встреча'
     out, pending = [], kind_hint
     for line in rest:
         m = TIME_RE.match(line)
@@ -90,14 +97,60 @@ def parse_block(text):
 
 
 def load_links(paths):
+    """{предмет: ссылка}. Внутри файла побеждает последняя (свежая) ссылка, между файлами — первый файл:
+    первым передавать самый новый модуль."""
     links = {}
     for p in paths or []:
+        own = {}
         for line in open(p, encoding='utf-8'):
             if line.strip():
                 r = json.loads(line)
                 if r.get('meeting_link'):
-                    links[r['subject']] = r['meeting_link']
+                    own[r['subject']] = r['meeting_link']
+        for subject, link in own.items():
+            links.setdefault(subject, link)
     return links
+
+
+def fix_shared_links(rows, links):
+    """В таблице одна гиперссылка на ячейку, а занятий в ячейке бывает два («Семинар наставника» +
+    «Разработка ИИ-агентов»). Ссылка ячейки достаётся занятию, в блоке которого написано «ссылка»
+    (если таких несколько — первому по времени). Остальным — их собственная ссылка: самая частая
+    у этого предмета и типа в ячейках с одним занятием, потом у предмета, потом из прошлых модулей.
+    Возвращает список занятий, которым ссылка подставлена так (для проверки глазами)."""
+    from collections import Counter, defaultdict
+
+    cells = defaultdict(list)
+    for r in rows:
+        cells[(r['date'], r['cell'])].append(r)
+    single = [g[0] for g in cells.values() if len(g) == 1 and g[0]['meeting_link']]
+    by_kind = defaultdict(Counter)
+    by_subject = defaultdict(Counter)
+    for r in single:
+        by_kind[(r['subject'], r['lesson_type'])][r['meeting_link']] += 1
+        by_subject[r['subject']][r['meeting_link']] += 1
+
+    def own_link(r):
+        for counter in (by_kind.get((r['subject'], r['lesson_type'])), by_subject.get(r['subject'])):
+            if counter:
+                return counter.most_common(1)[0][0]
+        return links.get(r['subject'])
+
+    guessed = []
+    for group in cells.values():
+        if len(group) < 2 or len({r['meeting_link'] for r in group}) > 1:
+            continue
+        group.sort(key=lambda r: r['time_start'])
+        holders = [r for r in group if 'ссылка' in r['raw_line'].lower()] or group[:1]
+        owner = holders[0]
+        for r in group:
+            if r is owner or r['subject'] == owner['subject']:
+                continue                           # лекция и семинар одного предмета — одна встреча
+            link = own_link(r)
+            if link != r['meeting_link']:
+                r['meeting_link'] = link
+                guessed.append(r)
+    return guessed
 
 
 def parse_sheet(ws, links):
@@ -136,19 +189,26 @@ def parse_sheet(ws, links):
                             "cell": f"{c}{r + 1}", "sheet": ws.title,
                         })
     rows.sort(key=lambda x: (x['date'], x['time_start'], x['subject']))
-    return rows
+    return rows, fix_shared_links(rows, links)
 
 
 def main():
     ap = argparse.ArgumentParser(description="xlsx-вкладка модуля → JSONL для import_schedule")
-    ap.add_argument('xlsx')
-    ap.add_argument('--sheet', required=True)
+    ap.add_argument('xlsx', nargs='?', help="xlsx-расписание (без него — --fix-links для готового JSONL)")
+    ap.add_argument('--sheet')
+    ap.add_argument('--fix-links', help="готовый JSONL: только разнести ссылки в ячейках с двумя занятиями")
     ap.add_argument('--links-from', action='append', help="JSONL прошлых модулей — ссылки по предмету")
     ap.add_argument('--out', required=True)
     args = ap.parse_args()
 
-    wb = openpyxl.load_workbook(args.xlsx)
-    rows = parse_sheet(wb[args.sheet], load_links(args.links_from))
+    links = load_links(args.links_from)
+    if args.fix_links:
+        rows = [json.loads(line) for line in open(args.fix_links, encoding='utf-8') if line.strip()]
+        guessed = fix_shared_links(rows, links)
+    else:
+        if not (args.xlsx and args.sheet):
+            ap.error("нужны xlsx и --sheet (или --fix-links)")
+        rows, guessed = parse_sheet(openpyxl.load_workbook(args.xlsx)[args.sheet], links)
     with open(args.out, 'w', encoding='utf-8') as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + '\n')
@@ -156,6 +216,10 @@ def main():
     print(f"Занятий: {len(rows)} → {args.out}")
     if no_link:
         print("Без ссылки: " + ", ".join(no_link))
+    if guessed:
+        print("Две пары в одной ячейке — ссылка взята у предмета, проверьте:")
+        for r in guessed:
+            print(f"  {r['date']} {r['time_start']} {r['subject']} → {r['meeting_link']}")
 
 
 if __name__ == '__main__':
