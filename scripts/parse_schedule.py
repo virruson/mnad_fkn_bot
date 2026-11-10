@@ -25,9 +25,7 @@
 import argparse
 import json
 import re
-import sys
 from datetime import date
-from pathlib import Path
 
 import openpyxl
 

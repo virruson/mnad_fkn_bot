@@ -6,10 +6,8 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.handlers.auth import get_email, get_code, EMAIL, CODE
-from bot.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
-auth_service = AuthService()
 
 async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает все текстовые сообщения"""

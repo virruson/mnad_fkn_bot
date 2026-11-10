@@ -16,7 +16,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.utils.database import SessionLocal, get_schedule_by_date
 from bot.models import Subject, User
 from bot.services.deadlines import (
-    DIGEST_OFFSETS, get_digest_deadlines, get_done_by_user, is_past, now_msk, render_deadline_digest, without_done,
+    DIGEST_OFFSETS, WEEKDAYS, get_digest_deadlines, get_done_by_user, is_past, now_msk, render_deadline_digest,
+    without_done,
 )
 from bot.services.selection import get_selection, is_visible, visible_deadlines
 
@@ -146,8 +147,7 @@ async def daily_digest(context):
                 if not schedules:
                     text = f"📅 {today.strftime('%d.%m.%Y')} — занятий нет 🎉"
                 else:
-                    day_names = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
-                    weekday = day_names[today.weekday()]
+                    weekday = WEEKDAYS[today.weekday()]
                     header = f"📅 Расписание на {today.strftime('%d.%m')} ({weekday})"
                     lessons = "\n\n".join(_format_lesson(s) for s in schedules)
                     text = f"{header}\n\n{lessons}"

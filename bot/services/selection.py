@@ -15,7 +15,7 @@ from datetime import date
 
 from sqlalchemy import and_, false, literal, or_, true
 
-from bot.models import Deadline, Subject, User, UserElective
+from bot.models import Subject, User, UserElective
 
 
 @dataclass(frozen=True)

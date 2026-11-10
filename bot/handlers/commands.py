@@ -4,16 +4,7 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from telegram.error import BadRequest
 
-from bot.handlers.schedule import (
-    show_schedule_callback,
-    schedule_today_callback,
-    schedule_tomorrow_callback,
-    schedule_week_callback,
-    schedule_next_week_callback,
-    schedule_month_callback,
-)
 from bot.handlers.auth import auth_service, login_start, logout as auth_logout, logout_confirm
 from bot.services import feedback
 from bot.utils.ui import answer, show_screen
@@ -147,18 +138,5 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Обработка кнопок расписания
-    if query.data == "schedule":
-        await show_schedule_callback(update, context)
-    elif query.data == "schedule_today":
-        await schedule_today_callback(update, context)
-    elif query.data == "schedule_tomorrow":
-        await schedule_tomorrow_callback(update, context)
-    elif query.data == "schedule_week":
-        await schedule_week_callback(update, context)
-    elif query.data == "schedule_next_week":
-        await schedule_next_week_callback(update, context)
-    elif query.data == "schedule_month":
-        await schedule_month_callback(update, context)
-    else:
-        await query.edit_message_text(text=f"⚙️ Функция {query.data} в разработке")
+    # кнопки разделов ловят свои обработчики в main.py — сюда доходит только неизвестное
+    await query.edit_message_text(text=f"⚙️ Функция {query.data} в разработке")

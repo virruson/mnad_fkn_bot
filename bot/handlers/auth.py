@@ -1,7 +1,7 @@
 """
 Обработчик авторизации пользователей
 """
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
 import logging
 from bot.services.auth_service import AuthService
@@ -153,23 +153,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data.clear()
     return ConversationHandler.END
-
-# async def show_authorized_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     """Показывает меню для авторизованного пользователя"""
-#     user_id = update.effective_user.id
-#     email = auth_service.get_user_email(user_id)
-    
-#     menu_text = (
-#         f"👋 Добро пожаловать!\n"
-#         f"✅ Авторизован: {email}\n\n"
-#         f"Доступные команды:\n"
-#         f"/schedule - Расписание\n"
-#         f"/notify - Уведомления\n"
-#         f"/deadlines - Дедлайны\n"
-#         f"/subjects - Предметы\n"
-#         f"/logout - Выйти"
-#     )
-#     await update.message.reply_text(menu_text)
 
 LOGOUT_CONFIRM_TEXT = ("🚪 <b>Выйти из аккаунта?</b>\n"
                        "Уведомления перестанут приходить. Настройки и прогресс сохранятся, "

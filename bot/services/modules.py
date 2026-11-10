@@ -11,11 +11,10 @@ from datetime import date, timedelta
 from typing import Literal
 
 from bot.models import Module
+from bot.services.deadlines import WEEKDAYS
 
 ICON = "🗂"
 STATUS_WORDS = {'current': "текущий", 'archive': "архив", 'upcoming': "скоро"}
-SECTIONS = ('deadlines', 'progress', 'mysubj', 'schedule')   # module_now_<section>
-WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
 
 
 # ---------------------------------------------------------------------------

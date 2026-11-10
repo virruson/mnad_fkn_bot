@@ -20,7 +20,7 @@ from matplotlib.patches import FancyBboxPatch, Rectangle  # noqa: E402
 
 from bot.models import Deadline  # noqa: E402
 from bot.services.deadlines import (  # noqa: E402
-    END_OF_DAY, HARD_SUFFIX, KIND_IN_DIGEST, WEEKDAYS, _digest_title, display_name, due_at,
+    HARD_SUFFIX, KIND_IN_DIGEST, WEEKDAYS, _digest_title, display_name, due_at, format_due,
 )
 
 WINDOW_DAYS = 14
@@ -101,21 +101,14 @@ def what_label(it: Item) -> str:
     return " ".join(filter(None, [KIND_IN_DIGEST[it.kind], _digest_title(it.deadline)]))
 
 
-def _date(d: Deadline) -> str:
-    s = d.due_date.strftime('%d.%m')
-    if d.due_time and d.due_time != END_OF_DAY:
-        s += f", {d.due_time.strftime('%H:%M')}"
-    return s
-
-
 def date_label(it: Item, today: date) -> tuple[str, bool]:
     """Текст правой колонки и флаг «срочно» (сегодня/завтра — жирным)."""
     if it.hard:
-        return f"{_date(it.deadline)} → {_date(it.hard)}", False
+        return f"{format_due(it.deadline)} → {format_due(it.hard)}", False
     left = (it.deadline.due_date - today).days
     if left in (0, 1):
         return ("сегодня" if left == 0 else "завтра"), True
-    return _date(it.deadline), False
+    return format_due(it.deadline), False
 
 
 def cache_key(items: list, today: date) -> str:
@@ -137,7 +130,7 @@ def _later_block(later: list) -> list:
         return []
     lines = ["<b>Позже:</b>"]
     for it in later[:LATER_MAX]:
-        when = f"{_date(it.deadline)} → {_date(it.hard)}" if it.hard else _date(it.deadline)
+        when = f"{format_due(it.deadline)} → {format_due(it.hard)}" if it.hard else format_due(it.deadline)
         lines.append(f"{_digest_line(it)} · {when}")
     if len(later) > LATER_MAX:
         lines.append(f"<i>и ещё {len(later) - LATER_MAX} — в карточках предметов</i>")

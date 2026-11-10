@@ -53,15 +53,6 @@ class Teacher(Base):
         parts = [self.last_name, self.first_name, self.middle_name]
         return ' '.join(p for p in parts if p)
     
-    @property
-    def short_name(self):
-        """Короткое имя (Фамилия И.О.)"""
-        if self.first_name and self.middle_name:
-            return f"{self.last_name} {self.first_name[0]}.{self.middle_name[0]}."
-        elif self.first_name:
-            return f"{self.last_name} {self.first_name[0]}."
-        return self.last_name
-    
     def __repr__(self):
         return f"<Teacher {self.full_name}>"
 
@@ -95,36 +86,6 @@ class Schedule(Base):
     subject = relationship("Subject", back_populates="schedules")
     teacher = relationship("Teacher", back_populates="schedules")
     lesson_type = relationship("LessonType", back_populates="schedules")
-    
-    @property
-    def datetime_obj(self):
-        """Объединяет дату и время"""
-        from datetime import datetime
-        return datetime.combine(self.lesson_date, self.lesson_time)
-    
-    def format_for_telegram(self):
-        """Форматирование для Telegram сообщения"""
-        # Форматируем дату и время
-        date_str = self.lesson_date.strftime('%d.%m.%Y')
-        time_str = self.lesson_time.strftime('%H:%M')
-        
-        # День недели по-русски
-        days = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
-        weekday = days[self.lesson_date.weekday()]
-        
-        lines = [
-            f"📅 {date_str} ({weekday}) {time_str}",
-            f"📚 {self.subject.name} ({self.lesson_type.name})",
-            f"👨‍🏫 {self.teacher.short_name}",
-            f"👥 {self.stream.name}",
-        ]
-        
-        if self.meeting_link:
-            lines.append(f"🔗 {self.meeting_link}")
-        else:
-            lines.append("📍 Очное занятие")
-            
-        return '\n'.join(lines)
     
     def __repr__(self):
         return f"<Schedule {self.subject.name} {self.lesson_date}>"

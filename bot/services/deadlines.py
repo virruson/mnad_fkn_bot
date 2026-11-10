@@ -181,7 +181,10 @@ def render_deadlines_screen(has_subjects: bool, is_current: bool = True) -> str:
 # Карточка предмета
 # ---------------------------------------------------------------------------
 
-def _format_due(d: Deadline) -> str:
+def format_due(d: Deadline) -> str:
+    """«05.10» или «05.10, 18:00»; срок текстом — «дата уточняется»."""
+    if is_tbd(d):
+        return TBD_TEXT
     s = d.due_date.strftime('%d.%m')
     if d.due_time and d.due_time != END_OF_DAY:
         s += f", {d.due_time.strftime('%H:%M')}"
@@ -195,7 +198,7 @@ def format_deadline_line(d: Deadline, now: datetime, marked: set = frozenset(),
     if is_tbd(d):   # срок пока текстом: «№1 · <i>мягкий — выкладка ДЗ №2 + 1 неделя …</i>»
         base = f"{escape(d.title)} · <i>{escape(tbd_text(d))}</i>"
         return f"✅ <s>{base}</s>" if d.id in marked else base
-    parts = [escape(d.title), f"<b>{_format_due(d)}</b>"]
+    parts = [escape(d.title), f"<b>{format_due(d)}</b>"]
     if d.kind == 'milestone':
         parts.reverse()  # у этапов ВКР длинные названия — дата впереди
     base = " · ".join(filter(None, parts))

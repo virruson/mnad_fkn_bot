@@ -8,10 +8,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from bot.handlers.auth import auth_required, auth_service
 from bot.utils.database import (
     SessionLocal,
-    get_today_schedule,
     get_schedule_between,
-    get_schedule_by_date,
-    get_week_schedule,
     format_schedule_message,
 )
 from bot.services.selection import get_selection_by_telegram_id
@@ -50,330 +47,106 @@ async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # экран и шлёт новое (команда /schedule) — история в чате не копится
     await show_screen(update, context, message, reply_markup=reply_markup, parse_mode='Markdown')
 
-async def show_schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать расписание (обработчик нажатия на кнопку)"""
-    # Перенаправляем на show_schedule
-    await show_schedule(update, context)
 
-async def schedule_today_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать расписание на сегодня для всех потоков (кнопка "Сегодня" или команда /today)"""
-    user_id = update.effective_user.id
+PERIOD_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
+    [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")],
+])
 
-    if not auth_service.is_user_verified(user_id):
+
+def _format_days(schedules, title: str) -> str:
+    """Занятия за несколько дней, по дням (Markdown)."""
+    # ключ — дата, а не строка: иначе «01.10» при сортировке окажется раньше «28.09»
+    days = defaultdict(list)
+    for sch in schedules:
+        days[sch.Schedule.lesson_date].append(sch)
+
+    message = f"{title}\n\n"
+    for day in sorted(days):
+        message += f"**{day.strftime('%d.%m.%Y')}:**\n"
+        for sch in days[day]:
+            teacher_name = f"{sch.last_name} {sch.first_name}"
+            if sch.middle_name:
+                teacher_name += f" {sch.middle_name}"
+            message += (
+                f"  ⏰ {sch.Schedule.lesson_time.strftime('%H:%M')} – {sch.subject_name} ({sch.lesson_type_name})\n"
+                f"     👨‍🏫 {teacher_name}\n"
+                f"     👥 {sch.stream_name}\n"
+            )
+            if sch.Schedule.meeting_link:
+                message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
+            else:
+                message += "     📍 Очное занятие\n"
+        message += "\n"
+
+    if len(message) > 4000:   # лимит Telegram — 4096 символов
+        message = message[:3950] + "\n\n_...список обрезан, уточните период_"
+    return message
+
+
+def _period_screen(update, date_from, date_to, title: str, empty: str) -> dict:
+    """Текст экрана за период: аргументы для show_screen / reply_text."""
+    db = SessionLocal()
+    try:
+        schedules = get_schedule_between(db, date_from, date_to, _selection(db, update))
+    finally:
+        db.close()
+    if not schedules:
+        return dict(text=empty, reply_markup=PERIOD_KEYBOARD)
+    if date_from == date_to:
+        text = format_schedule_message(schedules, title)
+    else:
+        text = _format_days(schedules, title)
+    return dict(text=text, reply_markup=PERIOD_KEYBOARD, parse_mode='Markdown', disable_web_page_preview=True)
+
+
+async def _show_period(update: Update, context: ContextTypes.DEFAULT_TYPE, date_from, date_to,
+                       title: str, empty: str):
+    if not auth_service.is_user_verified(update.effective_user.id):
         await show_screen(update, context, "🔐 Требуется авторизация")
         return
-    
-    db = SessionLocal()
-    try:
-        today = datetime.now().date()
-        schedules = get_today_schedule(db, _selection(db, update))
-        
-        # Создаем клавиатуру с двумя кнопками
-        keyboard = [
-            [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        if not schedules:
-            await show_screen(
-                update, context,
-                f"📅 На {today.strftime('%d.%m.%Y')} занятий нет 🎉",
-                reply_markup=reply_markup
-            )
-            return
-        
-        message = format_schedule_message(schedules, f"📅 Расписание на {today.strftime('%d.%m.%Y')}")
-        
-        await show_screen(
-            update, context, message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-        
-    finally:
-        db.close()
+    await show_screen(update, context, **_period_screen(update, date_from, date_to, title, empty))
+
+
+async def _show_day(update: Update, context: ContextTypes.DEFAULT_TYPE, day):
+    await _show_period(update, context, day, day, f"📅 Расписание на {day.strftime('%d.%m.%Y')}",
+                       f"📅 На {day.strftime('%d.%m.%Y')} занятий нет 🎉")
+
+
+async def schedule_today_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Кнопка «Сегодня» и команда /today."""
+    await _show_day(update, context, datetime.now().date())
+
 
 async def schedule_tomorrow_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать расписание на завтра"""
-    query = update.callback_query
-    user_id = update.effective_user.id
-    
-    if not auth_service.is_user_verified(user_id):
-        await query.edit_message_text("🔐 Требуется авторизация")
-        return
-    
-    db = SessionLocal()
-    try:
-        tomorrow = datetime.now().date() + timedelta(days=1)
-        schedules = get_schedule_by_date(db, tomorrow, _selection(db, update))
-        
-        # Создаем клавиатуру с двумя кнопками
-        keyboard = [
-            [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        if not schedules:
-            await query.edit_message_text(
-                f"📅 На {tomorrow.strftime('%d.%m.%Y')} занятий нет 🎉",
-                reply_markup=reply_markup
-            )
-            return
-        
-        message = format_schedule_message(schedules, f"📅 Расписание на {tomorrow.strftime('%d.%m.%Y')}")
-        
-        await query.edit_message_text(
-            message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-        
-    finally:
-        db.close()
+    await _show_day(update, context, datetime.now().date() + timedelta(days=1))
+
 
 async def schedule_week_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать расписание на текущую неделю"""
-    query = update.callback_query
-    user_id = update.effective_user.id
-    
-    if not auth_service.is_user_verified(user_id):
-        await query.edit_message_text("🔐 Требуется авторизация")
-        return
-    
-    db = SessionLocal()
-    try:
-        schedules = get_week_schedule(db, _selection(db, update))
-        
-        # Создаем клавиатуру с двумя кнопками
-        keyboard = [
-            [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Определяем начало и конец недели
-        today = datetime.now().date()
-        monday = today - timedelta(days=today.weekday())
-        sunday = monday + timedelta(days=6)
-        
-        if not schedules:
-            await query.edit_message_text(
-                f"📅 На неделю {monday.strftime('%d.%m')} - {sunday.strftime('%d.%m.%Y')} занятий нет 🎉",
-                reply_markup=reply_markup
-            )
-            return
-        
-        # Группируем по дням: ключ — реальная дата (не строка!), иначе при
-        # сортировке "01.10.2026" оказывается раньше "28.09.2026" по алфавиту
-        # и период, пересекающий границу месяца, показывается вперемешку
-        days = defaultdict(list)
-        for sch in schedules:
-            days[sch.Schedule.lesson_date].append(sch)
-        
-        message = f"📅 **Расписание на неделю {monday.strftime('%d.%m')} - {sunday.strftime('%d.%m.%Y')}**\n\n"
-        
-        for day in sorted(days):
-            lessons = days[day]
-            message += f"**{day.strftime('%d.%m.%Y')}:**\n"
-            for sch in lessons:
-                lesson_time = sch.Schedule.lesson_time.strftime('%H:%M')
-                teacher_name = f"{sch.last_name} {sch.first_name}"
-                if hasattr(sch, 'middle_name') and sch.middle_name:
-                    teacher_name += f" {sch.middle_name}"
-                
-                message += (
-                    f"  ⏰ {lesson_time} – {sch.subject_name} ({sch.lesson_type_name})\n"
-                    f"     👨‍🏫 {teacher_name}\n"
-                    f"     👥 {sch.stream_name}\n"
-                )
-                # Добавляем ссылку на встречу, если есть
-                if sch.Schedule.meeting_link:
-                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
-                else:
-                    message += f"     📍 Очное занятие\n"
-            message += "\n"
+    today = datetime.now().date()
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    period = f"{monday.strftime('%d.%m')} - {sunday.strftime('%d.%m.%Y')}"
+    await _show_period(update, context, monday, sunday, f"📅 **Расписание на неделю {period}**",
+                       f"📅 На неделю {period} занятий нет 🎉")
 
-        # Telegram ограничивает сообщение 4096 символами
-        if len(message) > 4000:
-            message = message[:3950] + "\n\n_...список обрезан, уточните период_"
-
-        await query.edit_message_text(
-            message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-        
-    finally:
-        db.close()
 
 async def schedule_next_week_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать расписание на следующую неделю"""
-    query = update.callback_query
-    user_id = update.effective_user.id
-    
-    if not auth_service.is_user_verified(user_id):
-        await query.edit_message_text("🔐 Требуется авторизация")
-        return
-    
-    db = SessionLocal()
-    try:
-        # Рассчитываем следующую неделю
-        today = datetime.now().date()
-        next_monday = today + timedelta(days=(7 - today.weekday()))
-        next_sunday = next_monday + timedelta(days=6)
-        
-        schedules = get_schedule_between(db, next_monday, next_sunday, _selection(db, update))
-        
-        # Создаем клавиатуру с двумя кнопками
-        keyboard = [
-            [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        if not schedules:
-            await query.edit_message_text(
-                f"📅 На следующей неделе ({next_monday.strftime('%d.%m')} - {next_sunday.strftime('%d.%m.%Y')}) занятий нет 🎉",
-                reply_markup=reply_markup
-            )
-            return
-        
-        # Группируем по дням: ключ — реальная дата (не строка!), иначе при
-        # сортировке "01.10.2026" оказывается раньше "28.09.2026" по алфавиту
-        # и период, пересекающий границу месяца, показывается вперемешку
-        days = defaultdict(list)
-        for sch in schedules:
-            days[sch.Schedule.lesson_date].append(sch)
-        
-        message = f"📅 **Расписание на следующую неделю {next_monday.strftime('%d.%m')} - {next_sunday.strftime('%d.%m.%Y')}**\n\n"
-        
-        for day in sorted(days):
-            lessons = days[day]
-            message += f"**{day.strftime('%d.%m.%Y')}:**\n"
-            for sch in lessons:
-                lesson_time = sch.Schedule.lesson_time.strftime('%H:%M')
-                teacher_name = f"{sch.last_name} {sch.first_name}"
-                if hasattr(sch, 'middle_name') and sch.middle_name:
-                    teacher_name += f" {sch.middle_name}"
-                
-                message += (
-                    f"  ⏰ {lesson_time} – {sch.subject_name} ({sch.lesson_type_name})\n"
-                    f"     👨‍🏫 {teacher_name}\n"
-                    f"     👥 {sch.stream_name}\n"
-                )
-                # Добавляем ссылку на встречу, если есть
-                if sch.Schedule.meeting_link:
-                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
-                else:
-                    message += f"     📍 Очное занятие\n"
-            message += "\n"
+    today = datetime.now().date()
+    monday = today + timedelta(days=7 - today.weekday())
+    sunday = monday + timedelta(days=6)
+    period = f"{monday.strftime('%d.%m')} - {sunday.strftime('%d.%m.%Y')}"
+    await _show_period(update, context, monday, sunday, f"📅 **Расписание на следующую неделю {period}**",
+                       f"📅 На следующей неделе ({period}) занятий нет 🎉")
 
-        # Telegram ограничивает сообщение 4096 символами
-        if len(message) > 4000:
-            message = message[:3950] + "\n\n_...список обрезан, уточните период_"
-
-        await query.edit_message_text(
-            message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-        
-    finally:
-        db.close()
 
 async def schedule_month_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать расписание на месяц"""
-    query = update.callback_query
-    user_id = update.effective_user.id
-    
-    if not auth_service.is_user_verified(user_id):
-        await query.edit_message_text("🔐 Требуется авторизация")
-        return
-    
-    db = SessionLocal()
-    try:
-        # Рассчитываем начало и конец месяца
-        today = datetime.now().date()
-        month_start = today.replace(day=1)
-        if today.month == 12:
-            month_end = today.replace(year=today.year+1, month=1, day=1) - timedelta(days=1)
-        else:
-            month_end = today.replace(month=today.month+1, day=1) - timedelta(days=1)
-        
-        schedules = get_schedule_between(db, month_start, month_end, _selection(db, update))
-        
-        # Создаем клавиатуру с двумя кнопками
-        keyboard = [
-            [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Форматируем месяц как число (03, 04 и т.д.)
-        month_str = month_start.strftime('%m')
-        year_str = month_start.strftime('%Y')
-        
-        if not schedules:
-            await query.edit_message_text(
-                f"📅 На {month_str}.{year_str} занятий нет 🎉",
-                reply_markup=reply_markup
-            )
-            return
-        
-        # Группируем по дням: ключ — реальная дата (не строка!), иначе при
-        # сортировке "01.10.2026" оказывается раньше "28.09.2026" по алфавиту
-        # и период, пересекающий границу месяца, показывается вперемешку
-        days = defaultdict(list)
-        for sch in schedules:
-            days[sch.Schedule.lesson_date].append(sch)
-        
-        message = f"📅 **Расписание на {month_str}.{year_str}**\n\n"
-        
-        for day in sorted(days):
-            lessons = days[day]
-            message += f"**{day.strftime('%d.%m.%Y')}:**\n"
-            for sch in lessons:
-                lesson_time = sch.Schedule.lesson_time.strftime('%H:%M')
-                teacher_name = f"{sch.last_name} {sch.first_name}"
-                if hasattr(sch, 'middle_name') and sch.middle_name:
-                    teacher_name += f" {sch.middle_name}"
-                
-                message += (
-                    f"  ⏰ {lesson_time} – {sch.subject_name} ({sch.lesson_type_name})\n"
-                    f"     👨‍🏫 {teacher_name}\n"
-                    f"     👥 {sch.stream_name}\n"
-                )
-                # Добавляем ссылку на встречу, если есть
-                if sch.Schedule.meeting_link:
-                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
-                else:
-                    message += f"     📍 Очное занятие\n"
-            message += "\n"
-
-        # Telegram ограничивает сообщение 4096 символами
-        if len(message) > 4000:
-            message = message[:3950] + "\n\n_...список обрезан, уточните период_"
-
-        await query.edit_message_text(
-            message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-        
-    finally:
-        db.close()
-
-# Обновляем функцию show_group_schedule - больше не нужна, но оставим для совместимости
-async def show_group_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Устаревшая функция, перенаправляет на show_schedule"""
-    await show_schedule(update, context)
+    today = datetime.now().date()
+    month_start = today.replace(day=1)
+    month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    month = month_start.strftime('%m.%Y')
+    await _show_period(update, context, month_start, month_end, f"📅 **Расписание на {month}**",
+                       f"📅 На {month} занятий нет 🎉")
 
 
 # ── Произвольный период ──────────────────────────────────────────────────────
@@ -445,58 +218,9 @@ async def schedule_custom_to(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return CUSTOM_TO
 
-    keyboard = [
-        [InlineKeyboardButton("📅 К выбору периода", callback_data="schedule")],
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    db = SessionLocal()
-    try:
-        schedules = get_schedule_between(db, date_from, date_to, _selection(db, update))
-
-        title = (f"📅 Расписание {date_from.strftime('%d.%m.%Y')} "
-                 f"– {date_to.strftime('%d.%m.%Y')}")
-
-        if not schedules:
-            await update.message.reply_text(
-                f"{title}\n\nЗанятий в этот период нет 🎉",
-                reply_markup=reply_markup
-            )
-            return ConversationHandler.END
-
-        # Группируем по дням
-        days = defaultdict(list)
-        for sch in schedules:
-            days[sch.Schedule.lesson_date].append(sch)
-
-        message = f"*{title}*\n\n"
-        for day in sorted(days):
-            message += f"*{day.strftime('%d.%m.%Y')}:*\n"
-            for sch in days[day]:
-                lesson_time = sch.Schedule.lesson_time.strftime('%H:%M')
-                teacher_name = f"{sch.last_name} {sch.first_name or ''}".strip()
-                message += (
-                    f"  ⏰ {lesson_time} – {sch.subject_name} ({sch.lesson_type_name})\n"
-                    f"     👨‍🏫 {teacher_name} | 👥 {sch.stream_name}\n"
-                )
-                if sch.Schedule.meeting_link:
-                    message += f"     🔗 [MTS-Link]({sch.Schedule.meeting_link})\n"
-            message += "\n"
-
-        # Telegram ограничивает сообщение 4096 символами
-        if len(message) > 4000:
-            message = message[:3950] + "\n\n_...список обрезан, уточните период_"
-
-        await update.message.reply_text(
-            message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-    finally:
-        db.close()
-
+    title = f"📅 Расписание {date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
+    await update.message.reply_text(**_period_screen(update, date_from, date_to, f"*{title}*",
+                                                     f"{title}\n\nЗанятий в этот период нет 🎉"))
     return ConversationHandler.END
 
 

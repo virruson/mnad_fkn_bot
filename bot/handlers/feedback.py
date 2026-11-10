@@ -14,7 +14,6 @@ callback_data:
 """
 import logging
 import re
-from datetime import timedelta
 
 from datetime import datetime
 

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from html import escape
 
-from bot.services.deadlines import END_OF_DAY, KIND_BLOCKS, NO_INFO, TBD_TEXT, display_name, due_at, is_tbd
+from bot.services.deadlines import KIND_BLOCKS, NO_INFO, display_name, due_at, format_due
 
 WEIGHT_KINDS = ('hw', 'quiz', 'test', 'project', 'exam')
 SHORT_KIND = {'hw': 'ДЗ', 'quiz': 'Квиз', 'test': 'КР', 'project': 'Проект', 'exam': 'Экзамен'}
@@ -177,15 +177,6 @@ def short_label(d) -> str:
     return _cut(short_label_parts(d.kind, d.title), BUTTON_LIMIT)
 
 
-def _due(d) -> str:
-    if is_tbd(d):
-        return TBD_TEXT
-    s = d.due_date.strftime('%d.%m')
-    if d.due_time and d.due_time != END_OF_DAY:
-        s += f", {d.due_time.strftime('%H:%M')}"
-    return s
-
-
 def is_done(marks: dict, d) -> bool:
     m = marks.get(d.id)
     return m is not None and m.done_at is not None
@@ -248,7 +239,7 @@ def format_activity_line(d, marks: dict) -> str:
     if d.progress_role == 'bonus':
         title = re.sub(r"\s*\(бонус\)", "", title, flags=re.IGNORECASE)  # слово «бонус» и так в строке
     title = escape(title)
-    tail = "<i>бонус</i>" if d.progress_role == 'bonus' else _due(d)
+    tail = "<i>бонус</i>" if d.progress_role == 'bonus' else format_due(d)
     return f"{_status(marks, d)} {title} · {tail}"
 
 
@@ -351,7 +342,7 @@ def _context_line(d) -> str:
     name = escape(subject_label(d.subject))
     if d.progress_role == 'bonus':
         return f"{name} · бонус, в накоп не входит"
-    return f"{name} · срок {_due(d)}"
+    return f"{name} · срок {format_due(d)}"
 
 
 def render_grade_screen(d, current=None, edit: bool = False) -> str:

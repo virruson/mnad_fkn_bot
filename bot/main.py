@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
-from telegram.error import BadRequest  # Добавляем импорт для обработки ошибок
 from bot.handlers.commands import start, help_command, button_callback
 from bot.handlers import auth
 from bot.handlers.message_handler import handle_all_messages
@@ -22,7 +21,6 @@ from bot.services.scheduler import setup_scheduler
 # Импортируем обработчики расписания
 from bot.handlers.schedule import (
     show_schedule,
-    show_schedule_callback,
     schedule_today_callback,
     schedule_tomorrow_callback,
     schedule_week_callback,
@@ -136,7 +134,7 @@ def main():
 
     # 4. Callback-кнопки (порядок важен)
     application.add_handler(CallbackQueryHandler(auth.login_start, pattern="^login$"))
-    application.add_handler(CallbackQueryHandler(show_schedule_callback, pattern="^schedule$"))
+    application.add_handler(CallbackQueryHandler(show_schedule, pattern="^schedule$"))
     application.add_handler(CallbackQueryHandler(schedule_today_callback, pattern="^schedule_today$"))
     application.add_handler(CallbackQueryHandler(schedule_tomorrow_callback, pattern="^schedule_tomorrow$"))
     application.add_handler(CallbackQueryHandler(schedule_week_callback, pattern="^schedule_week$"))
