@@ -175,3 +175,32 @@ if __name__ == '__main__':
         if name.startswith('test_'):
             fn()
             print(f"ok  {name}")
+
+
+def test_dl_bonus_in_numerator_and_caps():
+    """DL: ДЗ = (H1+H2+H3+B1+B2+B3)/3, Итог = min(10, 0.6·min(12, ДЗ) + 0.4·Экз) — таблица из правил курса."""
+    from datetime import date
+    from types import SimpleNamespace as NS
+    weights = P.parse_weights("hw=0.6; exam=0.4; bonus:hw=1; cap:hw=12; cap:total=10")
+    assert P.weights_sum_ok(weights) and P.bonus_counts(weights, 'hw')
+    hw = [NS(id=i, kind='hw', title=f'№{i}', progress_role='item', due_date=date(2026, 11, 15)) for i in (1, 2, 3)]
+    bonus = [NS(id=10 + i, kind='hw', title=f'Бонус к №{i}', progress_role='bonus', due_date=date(2026, 11, 15))
+             for i in (1, 2, 3)]
+    exam = NS(id=20, kind='exam', title='', progress_role='item', due_date=date(2026, 12, 25))
+    ds = hw + bonus + [exam]
+
+    def score(h, b, e):
+        marks = {d.id: NS(grade=g, done_at=1) for d, g in zip(hw + bonus + [exam], [*h, *b, e]) if g is not None}
+        return P.compute(weights, ds, marks)
+
+    s = score((8, 8, 8), (None, None, None), 7)
+    assert (P.fmt_accum(s.accum), P.fmt_accum(s.total), P.fmt_avg(s.max_accum)) == ("4.80", "7.60", "7.2")
+    s = score((10, 10, 10), (4, 1, 1), 7)                       # бонусы 6 → ДЗ 12 → итог 10
+    assert (P.fmt_accum(s.accum), P.fmt_accum(s.total)) == ("7.20", "10.00")
+    s = score((10, 10, 10), (10, 1, 1), 10)                     # ДЗ 14 → потолок 12, итог потолок 10
+    assert (P.fmt_accum(s.accum), P.fmt_accum(s.total)) == ("7.20", "10.00")
+    s = score((10, 10, None), (None, None, None), 6)            # несданное = 0: ДЗ 6.67
+    assert P.fmt_accum(s.total) == "6.40"
+    # без правила bonus:hw бонусы, как раньше, не считаются
+    plain = P.compute({"hw": 0.6, "exam": 0.4}, ds, {b.id: NS(grade=10, done_at=1) for b in bonus})
+    assert P.fmt_accum(plain.accum) == "0.00"

@@ -20,6 +20,7 @@ from html import escape
 from bot.services.deadlines import KIND_BLOCKS, NO_INFO, display_name, due_at, format_due
 
 WEIGHT_KINDS = ('hw', 'quiz', 'test', 'project', 'exam')
+RULE_KEYS = ('bonus', 'cap')
 SHORT_KIND = {'hw': 'ДЗ', 'quiz': 'Квиз', 'test': 'КР', 'project': 'Проект', 'exam': 'Экзамен'}
 BLOCK_LABEL = {kind: label for kind, _, label in KIND_BLOCKS}
 KIND_ORDER = {kind: i for i, (kind, _, _) in enumerate(KIND_BLOCKS)}
@@ -32,6 +33,11 @@ EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿️‍]")
 
 # ---------------------------------------------------------------------------
 # Веса формулы: {"hw": 0.5, "quiz": 0.2, "exam": 0.3}, {"hw:№1": 0.29, …}
+# Правила курса (не веса, в сумму 1.0 не входят):
+#   "bonus:hw": 1   — бонусы этого типа идут в числитель, но не в знаменатель: (H1+H2+H3+B1+B2+B3)/3
+#   "cap:hw": 12    — потолок компонента: min(12, ДЗ)
+#   "cap:total": 10 — потолок итога: min(10, …)
+# Без этих ключей бонусы в накоп не входят (как у ПМО и RL).
 # ---------------------------------------------------------------------------
 
 def parse_weights(raw) -> dict:
@@ -50,7 +56,12 @@ def parse_weights(raw) -> dict:
     for key, value in pairs:
         key = str(key).strip()
         kind, _, title = key.partition(':')
-        if kind not in WEIGHT_KINDS or (_ and not title.strip()):
+        if kind in RULE_KEYS:   # bonus:hw / cap:hw / cap:total
+            target = title.strip()
+            if target not in WEIGHT_KINDS and not (kind == 'cap' and target == 'total'):
+                raise ValueError(f"ключ «{key}» — ожидается {kind}:<тип>{' или cap:total' if kind == 'cap' else ''}")
+            title = target
+        elif kind not in WEIGHT_KINDS or (_ and not title.strip()):
             raise ValueError(f"ключ «{key}» — ожидается {' | '.join(WEIGHT_KINDS)} или <тип>:<название>")
         try:
             weights[f"{kind}:{title.strip()}" if title else kind] = float(str(value).strip().replace(',', '.'))
@@ -59,8 +70,28 @@ def parse_weights(raw) -> dict:
     return weights
 
 
+def split_rules(weights: dict):
+    """(веса компонентов, типы с бонусами в числителе, потолки {тип|total: число})."""
+    plain, bonus_kinds, caps = {}, set(), {}
+    for key, value in (weights or {}).items():
+        kind, _, target = key.partition(':')
+        if kind == 'bonus':
+            if value:
+                bonus_kinds.add(target)
+        elif kind == 'cap':
+            caps[target] = Decimal(str(value))
+        else:
+            plain[key] = value
+    return plain, bonus_kinds, caps
+
+
+def bonus_counts(weights, kind: str) -> bool:
+    """Идут ли бонусы этого типа в накоп (правило «bonus:<тип>»)."""
+    return kind in split_rules(weights)[1]
+
+
 def weights_sum_ok(weights: dict) -> bool:
-    return abs(sum(weights.values()) - 1.0) <= 0.01
+    return abs(sum(split_rules(weights)[0].values()) - 1.0) <= 0.01
 
 
 @dataclass
@@ -72,11 +103,15 @@ class Component:
     whole_kind: bool       # ключ на весь тип («hw»), а не на одну активность («hw:№1»)
     total: int             # активностей в компоненте
     graded: list           # оценки оценённых
+    bonus: list = ()       # бонусные баллы — в числитель, не в знаменатель («bonus:<тип>»)
+    cap: Decimal = TEN     # потолок компонента («cap:<тип>»), по умолчанию 10
 
     @property
     def value(self) -> Decimal:
-        """Оценка компонента: неоценённое = 0."""
-        return sum(self.graded, Decimal(0)) / self.total if self.total else Decimal(0)
+        """Оценка компонента: неоценённое = 0, бонусы сверху, не выше потолка."""
+        if not self.total:
+            return Decimal(0)
+        return min(self.cap, (sum(self.graded, Decimal(0)) + sum(self.bonus, Decimal(0))) / self.total)
 
     @property
     def average(self):
@@ -101,23 +136,30 @@ def compute(weights: dict, deadlines: list, marks: dict) -> Score | None:
     """Накоп по весам. None — у предмета нет весов."""
     if not weights:
         return None
+    weights, bonus_kinds, caps = split_rules(weights)
+
+    def grades(ds):
+        return [Decimal(marks[d.id].grade) for d in ds if d.id in marks and marks[d.id].grade is not None]
+
     items = [d for d in deadlines if d.progress_role == 'item']
     components = []
     for key in sorted(weights, key=_sort_weight_key):
         kind, _, title = key.partition(':')
         own = [d for d in items if d.kind == kind and (not title or d.title.strip() == title)]
-        graded = [Decimal(marks[d.id].grade) for d in own
-                  if d.id in marks and marks[d.id].grade is not None]
+        bonus = grades(d for d in deadlines if d.progress_role == 'bonus' and d.kind == kind) \
+            if kind in bonus_kinds and not title else []
         label = BLOCK_LABEL.get(kind, kind) if not title else short_label_parts(kind, title)
         components.append(Component(key, label, Decimal(str(weights[key])), kind == 'exam',
-                                    not title, len(own), graded))
+                                    not title, len(own), grades(own), bonus, caps.get(kind, TEN)))
 
     regular = [c for c in components if not c.is_exam]
     exams = [c for c in components if c.is_exam]
     accum = sum((c.weight * c.value for c in regular), Decimal(0))
-    max_accum = sum((c.weight for c in regular), Decimal(0)) * TEN
+    max_accum = sum((c.weight * c.cap for c in regular), Decimal(0))
     exam_graded = bool(exams) and all(c.total and len(c.graded) == c.total for c in exams)
     total = accum + sum((c.weight * c.value for c in exams), Decimal(0)) if exam_graded else None
+    if total is not None and 'total' in caps:
+        total = min(caps['total'], total)
     return Score(components, accum, max_accum, total)
 
 
@@ -252,6 +294,8 @@ def _render_table(score: Score) -> str:
             avg = c.average
             value = fmt_avg(avg) if avg is not None else "—"
             suffix = f" · {len(c.graded)} из {c.total}" if c.whole_kind else ""
+            if c.bonus:
+                suffix += f" · бонус +{fmt_avg(sum(c.bonus, Decimal(0)) / c.total)}"
         rows.append((c.label, value, suffix))
     label_w = max(10, max(len(r[0]) for r in rows) + 2)
     value_w = max(3, max(len(r[1]) for r in rows))
@@ -341,7 +385,8 @@ def activity_buttons(deadlines: list, marks: dict) -> list:
 def _context_line(d) -> str:
     name = escape(subject_label(d.subject))
     if d.progress_role == 'bonus':
-        return f"{name} · бонус, в накоп не входит"
+        counts = bonus_counts(getattr(d.subject, 'grading_weights', None), d.kind)
+        return f"{name} · бонус, {'идёт в накоп сверх нормы' if counts else 'в накоп не входит'}"
     return f"{name} · срок {format_due(d)}"
 
 

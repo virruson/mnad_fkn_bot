@@ -54,7 +54,8 @@ def _deadline(db, deadline_id: int):
     d = db.get(Deadline, deadline_id, options=[joinedload(Deadline.subject)])
     if d is None or d.progress_role == 'hidden':
         return None
-    subject = SimpleNamespace(name=d.subject.name, short_name=d.subject.short_name)
+    subject = SimpleNamespace(name=d.subject.name, short_name=d.subject.short_name,
+                              grading_weights=d.subject.grading_weights)
     return SimpleNamespace(id=d.id, subject_id=d.subject_id, kind=d.kind, title=d.title,
                            due_date=d.due_date, due_time=d.due_time, progress_role=d.progress_role,
                            subject=subject)
